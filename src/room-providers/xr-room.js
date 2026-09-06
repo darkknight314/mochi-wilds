@@ -25,8 +25,13 @@ export const OPTIONAL_FEATURES = [
 //
 // The preference order matters: gpu-optimized is the mode three.js can use,
 // and luminance-alpha is the format Android exposes for it.
+// gpu-optimized only, deliberately. Offering cpu-optimized as a fallback lets
+// the runtime hand back CPU depth, which three.js checks for and ignores
+// (`session.depthUsage == 'gpu-optimized'` in WebXRManager) — the session then
+// reports depth-sensing as enabled while nothing is ever occluded. Better to
+// be given no depth than unusable depth we would misreport as working.
 export const DEPTH_SENSING_INIT = {
-  usagePreference: ['gpu-optimized', 'cpu-optimized'],
+  usagePreference: ['gpu-optimized'],
   dataFormatPreference: ['luminance-alpha', 'float32'],
 };
 

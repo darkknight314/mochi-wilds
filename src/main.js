@@ -697,24 +697,46 @@ async function snapshot() {
   persist();
   toast('A little moment, kept forever. Find it in Memories.');
 }
+// What this device actually granted. Kept separate from the room description
+// because both used to write the same hint element and overwrite each other,
+// which hid exactly the information needed to tell why AR looked flat.
+let arCapabilities = { planes: null, depth: null, occluding: false };
 // Say plainly what the app can currently see of the room. Vague reassurance
 // here reads as a bug when the creature then refuses to leave one spot.
 function describeRoom(room) {
   const status = $('#ar-status');
   const hint = $('#ar-hint');
   if (!status || !hint) return;
+  if (!room) {
+    // A capability-only refresh: keep whatever the room last said.
+    hint.textContent = withCapabilities(hint.dataset.room || hint.textContent);
+    return;
+  }
   if (!room.known) {
     status.textContent = 'Looking for your room…';
-    hint.textContent = 'Move slowly so your spirit can find somewhere to play.';
+    hint.dataset.room = 'Move slowly so your spirit can find somewhere to play.';
+    hint.textContent = withCapabilities(hint.dataset.room);
     return;
   }
   const surfaces = room.walkable;
   const named = [...new Set(surfaces.map((s) => s.semantic).filter((s) => s !== 'unknown'))];
   status.textContent =
     surfaces.length > 1 ? `Found ${surfaces.length} surfaces` : 'Found somewhere to play';
-  hint.textContent = named.length
+  hint.dataset.room = named.length
     ? `${pet.name} can explore your ${named.join(' and ')}.`
     : `${pet.name} is exploring the space around you.`;
+  hint.textContent = withCapabilities(hint.dataset.room);
+}
+// Append the honest limitation, if there is one. Silence when everything the
+// device could give it, it gave.
+function withCapabilities(text) {
+  const notes = [];
+  if (arCapabilities.occluding) notes.push('Real objects hide it — try your hand.');
+  else if (arCapabilities.depth === false)
+    notes.push('No depth here, so it draws over real objects.');
+  if (arCapabilities.planes === false)
+    notes.push('No surfaces shared, so it plays where you placed it.');
+  return [text, ...notes].join(' ');
 }
 async function startAR() {
   openModal(
@@ -724,6 +746,7 @@ async function startAR() {
 async function launchAR(preview = false) {
   closeModal();
   arActive = true;
+  arCapabilities = { planes: null, depth: null, occluding: false };
   if (scene) scene.paused = true;
   overlay.innerHTML = `<div class="ar-shell" id="ar-overlay"><video id="ar-video" autoplay playsinline muted></video><div class="ar-preview-bg"></div><div id="ar-stage"></div><div class="ar-controls"><button class="glass-icon" data-action="stop-ar" aria-label="Close AR">${icon('close')}</button><span class="glass-pill" id="ar-status">${preview ? 'Interactive preview' : 'Opening your camera…'}</span></div><div class="ar-bottom"><p id="ar-hint">Drag to place your spirit · use the slider to resize</p><label>Spirit size <input id="ar-size" type="range" min="0.4" max="1.6" value="1" step="0.05"></label>${button('Send some love', 'ar-love', 'ar-button', 'heart')}</div></div>`;
   try {
@@ -748,17 +771,15 @@ async function launchAR(preview = false) {
           // lost — the caption is the only way the player can tell whether the
           // creature is exploring real furniture or just staying near them.
           onRoom: (room) => describeRoom(room),
-          onFeatures: ({ planes }) => {
-            if (planes === false)
-              $('#ar-hint').textContent =
-                'This browser will not share surfaces, so your spirit will play near where you place it.';
+          onFeatures: ({ planes, depth }) => {
+            arCapabilities = { ...arCapabilities, planes, depth };
+            describeRoom(null);
           },
           // Real depth occlusion is worth telling the player about, because it
           // is the one effect they can test themselves in a second.
           onOcclusion: (active) => {
-            if (active)
-              $('#ar-hint').textContent =
-                'Real objects hide your spirit now — pass your hand in front of it.';
+            arCapabilities = { ...arCapabilities, occluding: active };
+            describeRoom(null);
           },
         },
       );
