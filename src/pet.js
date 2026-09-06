@@ -421,6 +421,12 @@ export class PetScene {
     this.onRoom = onRoom;
     this.roomBounds = new RoomBounds(UNKNOWN_ROOM).scaleTo(this.motion.profile);
     this.motion.bounds = this.roomBounds;
+    // AR scenes are built with `garden: false`, which also turns roaming off —
+    // that was right when the creature had nowhere to go, but a sensed room is
+    // somewhere to go. Without this the controller re-inspects forever and
+    // never asks the room for a destination.
+    this.roamBeforeRoom = this.motion.roam;
+    this.motion.roam = true;
     this.roomView = this.roomView || new RoomView(this.scene, { key: this.key });
     return this;
   }
@@ -453,6 +459,8 @@ export class PetScene {
     this.roomBounds = null;
     this.roomVideo = null;
     this.room = UNKNOWN_ROOM;
+    if (this.roamBeforeRoom !== undefined) this.motion.roam = this.roamBeforeRoom;
+    this.roamBeforeRoom = undefined;
     this.motion.bounds = ELLIPSE_BOUNDS;
     this.motion.y = 0;
     this.motion.fromY = 0;
@@ -508,6 +516,10 @@ export class PetScene {
         this.setCreatureScale(0.22);
         this.anchor.visible = true;
         // Every surface is expressed relative to where the player placed it.
+        // The world matrix must be recomputed first: it still holds last
+        // frame's transform, from before the anchor moved to the reticle, and
+        // using it would offset every detected plane by the placement distance.
+        this.anchor.updateMatrixWorld(true);
         this.roomProvider?.setOrigin?.(this.anchor.matrixWorld);
         this.roomProvider?.setFallbackFloor?.();
         this.roomView?.group.position.copy(this.anchor.position);

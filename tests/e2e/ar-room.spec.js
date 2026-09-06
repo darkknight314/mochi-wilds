@@ -106,6 +106,25 @@ test.describe('camera room sensing', () => {
     expect(sensed.semantic).toBe('floor');
     expect(sensed.bounds).toBe(true);
     expect(sensed.intensity).toBeGreaterThan(0);
+    // The creature must actually go somewhere. AR scenes are built with
+    // roaming off, which once silently swallowed the whole feature: the room
+    // was sensed correctly and nothing ever moved.
+    const travelled = await page.evaluate(async () => {
+      const scene = window.__arScene;
+      const seen = new Set();
+      let moved = 0;
+      let last = { x: scene.motion.x, z: scene.motion.z };
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 250));
+        moved += Math.hypot(scene.motion.x - last.x, scene.motion.z - last.z);
+        last = { x: scene.motion.x, z: scene.motion.z };
+        seen.add(scene.motion.activity);
+      }
+      return { moved, activities: [...seen] };
+    });
+    expect(travelled.moved).toBeGreaterThan(0.2);
+    // And it must describe the room it is in, not a generic idle caption.
+    expect(travelled.activities.some((a) => /your floor/.test(a))).toBe(true);
     await page.getByRole('button', { name: 'Close AR' }).click();
     await expect(page.locator('.ar-shell')).toHaveCount(0);
     expect(errors).toEqual([]);
