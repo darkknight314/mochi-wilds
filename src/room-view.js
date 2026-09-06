@@ -32,6 +32,52 @@ export function surfaceGeometry(surface) {
   return geometry;
 }
 
+/**
+ * The vertical sides of a raised surface, from its top down to the floor.
+ *
+ * A mapped table or a backpack on the floor is known only as a flat lid at a
+ * height. Drawn as a lid alone it occludes nothing, and the creature walking
+ * behind it is painted straight over it. Skirting it down to the floor turns it
+ * into the solid object it actually is, so going behind it hides the creature —
+ * which is the occlusion this device can give us without a depth sensor.
+ *
+ * Returns raw triangle positions so the geometry is testable without a GPU.
+ */
+export function skirtPositions(polygon, topY, bottomY) {
+  const positions = [];
+  if (!polygon || polygon.length < 3 || !(topY > bottomY)) return positions;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    // Two triangles per edge, wound both ways by rendering double-sided, so a
+    // hull of either orientation still writes depth.
+    positions.push(
+      a.x,
+      topY,
+      a.z,
+      b.x,
+      topY,
+      b.z,
+      b.x,
+      bottomY,
+      b.z,
+      a.x,
+      topY,
+      a.z,
+      b.x,
+      bottomY,
+      b.z,
+      a.x,
+      bottomY,
+      a.z,
+    );
+  }
+  return positions;
+}
+
+/** How far above the lowest surface something must sit to be a solid object. */
+export const RAISED = 0.06;
+
 /** A signature that changes only when the geometry meaningfully changes. */
 export function geometrySignature(room) {
   return room.surfaces
@@ -50,7 +96,10 @@ export class RoomView {
     this.shadowMaterial = new THREE.ShadowMaterial({ color: '#2a2233', opacity: 0.3 });
     // Invisible to the eye, but present in the depth buffer: this is what makes
     // the creature disappear behind a real object rather than floating over it.
-    this.occluderMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
+    this.occluderMaterial = new THREE.MeshBasicMaterial({
+      colorWrite: false,
+      side: THREE.DoubleSide,
+    });
     this.occluderMaterial.depthWrite = true;
     this.baseKeyIntensity = key?.intensity ?? 2.5;
     this.baseKeyColor = key ? key.color.clone() : new THREE.Color('#fff1e5');
@@ -61,6 +110,9 @@ export class RoomView {
     if (signature === this.signature) return false;
     this.signature = signature;
     this.clearMeshes();
+    const walkable = room.walkable;
+    // The lowest walkable surface is the floor everything else stands on.
+    const floorY = walkable.length ? Math.min(...walkable.map((s) => s.y)) : 0;
     for (const surface of room.surfaces) {
       if (surface.polygon.length < 3) continue;
       const geometry = surfaceGeometry(surface);
@@ -71,6 +123,17 @@ export class RoomView {
         // buffer at the creature's own feet would clip its legs away.
         catcher.renderOrder = -1;
         this.group.add(catcher);
+        // Anything standing above the floor is a solid object, not a decal.
+        if (surface.y - floorY > RAISED) {
+          const positions = skirtPositions(surface.polygon, surface.y, floorY);
+          if (positions.length) {
+            const sides = new THREE.BufferGeometry();
+            sides.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            const skirt = new THREE.Mesh(sides, this.occluderMaterial);
+            skirt.renderOrder = -2;
+            this.group.add(skirt);
+          }
+        }
       } else {
         // Walls and ceilings are what the creature can genuinely hide behind.
         const occluder = new THREE.Mesh(geometry, this.occluderMaterial);

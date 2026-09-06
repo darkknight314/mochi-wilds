@@ -739,7 +739,9 @@ function withCapabilities(text) {
     // difference between "this phone cannot" and "we have not built that yet".
     notes.push(`Depth is ${arCapabilities.depthUsage}, so nothing hides it yet.`);
   else if (arCapabilities.depth === false)
-    notes.push('No depth here, so it draws over real objects.');
+    // Honest and final: this device's ARCore will not share a depth buffer, so
+    // only objects the room has actually mapped can hide the creature.
+    notes.push('No depth sensor shared, so only mapped objects hide it.');
   if (arCapabilities.granted)
     // The raw list, because every inference from it has been wrong at least
     // once and this is the one line that cannot be.
