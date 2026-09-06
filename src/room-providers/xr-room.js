@@ -9,6 +9,7 @@
 
 import * as THREE from 'three';
 import { RoomModel, Surface, Obstacle, rectangleSurface } from '../room-model.js';
+import { SurfaceMapper } from './hit-test-map.js';
 
 export const OPTIONAL_FEATURES = [
   'plane-detection',
@@ -25,13 +26,14 @@ export const OPTIONAL_FEATURES = [
 //
 // The preference order matters: gpu-optimized is the mode three.js can use,
 // and luminance-alpha is the format Android exposes for it.
-// gpu-optimized only, deliberately. Offering cpu-optimized as a fallback lets
-// the runtime hand back CPU depth, which three.js checks for and ignores
-// (`session.depthUsage == 'gpu-optimized'` in WebXRManager) — the session then
-// reports depth-sensing as enabled while nothing is ever occluded. Better to
-// be given no depth than unusable depth we would misreport as working.
+// gpu-optimized is listed first because three.js can only occlude with that
+// mode (`session.depthUsage == 'gpu-optimized'` in WebXRManager). cpu-optimized
+// is still accepted rather than refused: a device that offers only CPU depth
+// would otherwise report no depth at all, which hides the difference between
+// "this phone cannot do occlusion" and "this phone can, in a mode we have not
+// written yet". The granted mode is reported so that difference is visible.
 export const DEPTH_SENSING_INIT = {
-  usagePreference: ['gpu-optimized'],
+  usagePreference: ['gpu-optimized', 'cpu-optimized'],
   dataFormatPreference: ['luminance-alpha', 'float32'],
 };
 
@@ -59,6 +61,9 @@ export class XRRoomProvider {
     this.tracking = 'lost';
     this.fallbackFloor = null;
     this.lightProbe = null;
+    // Plane detection is behind a flag in stable Chrome, so on most phones the
+    // room is mapped from hit-test samples instead. See `hit-test-map.js`.
+    this.mapper = new SurfaceMapper();
   }
   /**
    * The room frame is anchored where the player placed the creature, so all
@@ -68,10 +73,21 @@ export class XRRoomProvider {
   setOrigin(matrix) {
     this.origin.copy(matrix);
     this.originInverse.copy(matrix).invert();
-    // Placing (or re-placing) invalidates every cached polygon, which was
-    // expressed in the previous frame.
+    // Placing (or re-placing) invalidates everything expressed in the previous
+    // frame — cached plane polygons and mapped samples alike.
     this.planes.clear();
+    this.mapper.reset();
     return this;
+  }
+  /**
+   * Record one real point the hit test landed on, in world space. This is how
+   * the room gets mapped when the browser will not share planes.
+   */
+  addHit(matrix) {
+    const point = new THREE.Vector3()
+      .setFromMatrixPosition(matrix)
+      .applyMatrix4(this.originInverse);
+    return this.mapper.add(point.x, point.y, point.z);
   }
   /** Without plane detection, the placed spot still gives us a floor to use. */
   setFallbackFloor(size = 1.6) {
@@ -176,7 +192,14 @@ export class XRRoomProvider {
   }
   model() {
     const surfaces = [...this.planes.values()].map((entry) => entry.surface);
-    if (!surfaces.some((s) => s.walkable) && this.fallbackFloor) surfaces.push(this.fallbackFloor);
+    // Detected planes are always preferred; mapped samples fill the gap when
+    // the browser shares none. The synthesised square is the last resort, used
+    // only until enough of the room has actually been looked at.
+    if (!surfaces.some((s) => s.walkable)) {
+      const mapped = this.mapper.surfaces();
+      if (mapped.length) surfaces.push(...mapped);
+      else if (this.fallbackFloor) surfaces.push(this.fallbackFloor);
+    }
     return new RoomModel({
       surfaces,
       // Walls sensed nearby double as things to duck behind.
@@ -191,8 +214,13 @@ export class XRRoomProvider {
       source: 'xr',
     });
   }
+  /** How much of the room has been mapped, for progress in the UI. */
+  get mapped() {
+    return this.mapper.progress;
+  }
   dispose() {
     this.planes.clear();
+    this.mapper.reset();
     this.lightProbe = null;
   }
 }

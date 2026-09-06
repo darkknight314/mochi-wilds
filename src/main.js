@@ -701,6 +701,8 @@ async function snapshot() {
 // because both used to write the same hint element and overwrite each other,
 // which hid exactly the information needed to tell why AR looked flat.
 let arCapabilities = { planes: null, depth: null, occluding: false };
+// How many real points the hit-test mapper has collected, shown as progress.
+let mappedProgress = 0;
 // Say plainly what the app can currently see of the room. Vague reassurance
 // here reads as a bug when the creature then refuses to leave one spot.
 function describeRoom(room) {
@@ -732,10 +734,18 @@ function describeRoom(room) {
 function withCapabilities(text) {
   const notes = [];
   if (arCapabilities.occluding) notes.push('Real objects hide it — try your hand.');
+  else if (arCapabilities.depth && arCapabilities.depthUsage)
+    // Depth exists but not in the mode that occludes. Naming the mode is the
+    // difference between "this phone cannot" and "we have not built that yet".
+    notes.push(`Depth is ${arCapabilities.depthUsage}, so nothing hides it yet.`);
   else if (arCapabilities.depth === false)
     notes.push('No depth here, so it draws over real objects.');
   if (arCapabilities.planes === false)
-    notes.push('No surfaces shared, so it plays where you placed it.');
+    notes.push(
+      mappedProgress > 0
+        ? `Mapping your room from where you look — ${mappedProgress} spots so far.`
+        : 'No surfaces shared, so look around to map your room.',
+    );
   return [text, ...notes].join(' ');
 }
 async function startAR() {
@@ -747,6 +757,7 @@ async function launchAR(preview = false) {
   closeModal();
   arActive = true;
   arCapabilities = { planes: null, depth: null, occluding: false };
+  mappedProgress = 0;
   if (scene) scene.paused = true;
   overlay.innerHTML = `<div class="ar-shell" id="ar-overlay"><video id="ar-video" autoplay playsinline muted></video><div class="ar-preview-bg"></div><div id="ar-stage"></div><div class="ar-controls"><button class="glass-icon" data-action="stop-ar" aria-label="Close AR">${icon('close')}</button><span class="glass-pill" id="ar-status">${preview ? 'Interactive preview' : 'Opening your camera…'}</span></div><div class="ar-bottom"><p id="ar-hint">Drag to place your spirit · use the slider to resize</p><label>Spirit size <input id="ar-size" type="range" min="0.4" max="1.6" value="1" step="0.05"></label>${button('Send some love', 'ar-love', 'ar-button', 'heart')}</div></div>`;
   try {

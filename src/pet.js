@@ -99,6 +99,7 @@ export class PetScene {
     this.roomVideo = null;
     this.occlusionActive = false;
     this.onOcclusion = () => {};
+    this.onMapped = () => {};
     this.roomView = null;
     this.room = UNKNOWN_ROOM;
     this.onRoom = () => {};
@@ -354,10 +355,18 @@ export class PetScene {
     }
     if (frame && this.hitSource) {
       const hits = frame.getHitTestResults(this.hitSource);
-      this.reticle.visible = hits.length > 0;
+      this.reticle.visible = hits.length > 0 && !this.anchor.visible;
       if (hits.length) {
         const pose = hits[0].getPose(this.renderer.xr.getReferenceSpace());
-        if (pose) this.reticle.matrix.fromArray(pose.transform.matrix);
+        if (pose) {
+          this.reticle.matrix.fromArray(pose.transform.matrix);
+          // Once placed, every frame's hit test is a free sample of a real
+          // surface. Sweeping the phone around maps the room, which is the
+          // only way to find a table when the browser shares no planes.
+          if (this.anchor.visible && this.roomProvider?.addHit?.(this.reticle.matrix)) {
+            this.onMapped?.(this.roomProvider.mapped);
+          }
+        }
       }
     }
     this.renderer.render(this.scene, this.camera);
@@ -470,6 +479,7 @@ export class PetScene {
     this.roomVideo = null;
     this.occlusionActive = false;
     this.onOcclusion = () => {};
+    this.onMapped = () => {};
     this.room = UNKNOWN_ROOM;
     if (this.roamBeforeRoom !== undefined) this.motion.roam = this.roamBeforeRoom;
     this.roamBeforeRoom = undefined;
@@ -485,7 +495,10 @@ export class PetScene {
     this.roomVideo = video;
     return provider;
   }
-  async startXR(onEnd, { onRoom = () => {}, onFeatures = () => {}, onOcclusion = () => {} } = {}) {
+  async startXR(
+    onEnd,
+    { onRoom = () => {}, onFeatures = () => {}, onOcclusion = () => {}, onMapped = () => {} } = {},
+  ) {
     const session = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test'],
       // Everything that makes the room real is optional: a browser that
@@ -505,6 +518,7 @@ export class PetScene {
       const provider = new XRRoomProvider();
       this.enableRoom(provider, { onRoom });
       this.onOcclusion = onOcclusion;
+      this.onMapped = onMapped;
       await provider.requestLightProbe(session);
       const enabled = session.enabledFeatures;
       onFeatures({
@@ -513,6 +527,10 @@ export class PetScene {
         planes: enabled ? enabled.includes('plane-detection') : null,
         light: !!provider.lightProbe,
         depth: enabled ? enabled.includes('depth-sensing') : null,
+        // Which depth mode was actually granted. This is the difference
+        // between "no depth hardware" and "depth we have not consumed yet".
+        depthUsage: session.depthUsage ?? null,
+        depthFormat: session.depthDataFormat ?? null,
       });
       this.reticle = new THREE.Mesh(
         new THREE.RingGeometry(0.12, 0.15, 40).rotateX(-Math.PI / 2),
