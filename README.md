@@ -51,15 +51,15 @@ AR is not a sticker on a camera feed. The app builds a model of the room it is i
 
 One interface, `RoomModel` (`src/room-model.js`), describes the room; two providers build it, so the behaviour is written once and every browser gets a version of it:
 
-|                   | `XRRoomProvider`                                                | `CameraRoomProvider`                                           |
-| ----------------- | --------------------------------------------------------------- | -------------------------------------------------------------- |
-| Where             | Android Chrome (WebXR)                                          | Every browser: desktop, iOS Safari, native                     |
-| Surfaces          | Real `plane-detection` polygons with floor/table/seat labels    | One ground plane the player places with a tap                  |
-| Fallback surfaces | Hit-test samples clustered by height into floor and table hulls | —                                                              |
-| Light             | `light-estimation` spherical harmonics and primary direction    | Rec. 709 luminance and colour cast measured from camera frames |
-| Placement         | `hit-test` reticle                                              | Tap position, read as a depth cue                              |
-| Stability         | Runtime tracking state                                          | Sparse optical flow across a 16x12 luminance grid              |
-| Occlusion         | Per-pixel, from the real depth buffer                           | None                                                           |
+|                   | `XRRoomProvider`                                                                          | `CameraRoomProvider`                                           |
+| ----------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Where             | Android Chrome (WebXR)                                                                    | Every browser: desktop, iOS Safari, native                     |
+| Surfaces          | Real `plane-detection` polygons with floor/table/seat labels                              | One ground plane the player places with a tap                  |
+| Fallback surfaces | Hit-test samples clustered by height into floor and table hulls                           | —                                                              |
+| Light             | `light-estimation` spherical harmonics and primary direction                              | Rec. 709 luminance and colour cast measured from camera frames |
+| Placement         | `hit-test` reticle                                                                        | Tap position, read as a depth cue                              |
+| Stability         | Runtime tracking state                                                                    | Sparse optical flow across a 16x12 luminance grid              |
+| Occlusion         | Per-pixel where `depth-sensing` is granted; otherwise mapped objects skirted to the floor | None                                                           |
 
 Plane detection is behind a flag in stable Chrome (`chrome://flags/#webxr-incubations`), so most Android phones share no planes at all. Rather than leaving the creature on a synthesised square, the room is then mapped from hit-tests: every frame's viewer-space hit test is one real point on a real surface, and sweeping the phone around sweeps that ray across the room. Those points are clustered by height (`src/room-providers/hit-test-map.js`) and each cluster's convex hull becomes a surface — the lowest is the floor, anything above it is something to climb onto. Mapped surfaces carry lower confidence than detected planes, and the UI reports how many spots have been mapped so far.
 
