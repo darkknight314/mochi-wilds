@@ -17,6 +17,26 @@ export function boundedTarget(x, z) {
   }
   return { x, z };
 }
+/**
+ * Where a creature is allowed to be. The garden is a fixed ellipse; AR swaps in
+ * a strategy backed by the real room (see `room-bounds.js`). The controller
+ * only ever asks a strategy to clamp a point, suggest somewhere to go, and say
+ * how high the ground is there — it never learns which kind it has.
+ */
+export const ELLIPSE_BOUNDS = {
+  clamp: (x, z) => boundedTarget(x, z),
+  heightAt: () => 0,
+  // Skewed toward the front of the shallow platform, so trips more often end
+  // heading toward the player than away from them.
+  wanderTarget(random, profile) {
+    const a = random();
+    const b = random() ** 0.45;
+    return {
+      x: (a - 0.5) * 2 * BOUNDS.x * profile.reach,
+      z: (b - 0.5) * 2 * BOUNDS.z * profile.reach,
+    };
+  },
+};
 // Speeds are metres per second, turn rates radians per second: every value here
 // is a rate, never a per-frame increment, so 30fps and 120fps agree.
 export const MOTION_PROFILES = {
@@ -84,10 +104,11 @@ export const MOTION_PROFILES = {
 export const profileOf = (species) => MOTION_PROFILES[species] || MOTION_PROFILES.dragon;
 // Time-based locomotion, independent of rendering. World placement belongs to the AR anchor.
 export class WanderController {
-  constructor(species, { roam = true, reducedMotion = false } = {}) {
+  constructor(species, { roam = true, reducedMotion = false, bounds = ELLIPSE_BOUNDS } = {}) {
     this.species = Object.hasOwn(CREATURES, species) ? species : 'dragon';
     this.profile = profileOf(this.species);
     this.roam = roam;
+    this.bounds = bounds || ELLIPSE_BOUNDS;
     this.reducedMotion = reducedMotion;
     this.time = 0;
     this.x = 0;
@@ -106,7 +127,15 @@ export class WanderController {
     this.activity = 'Taking in the little world';
     this.from = { x: 0, z: 0 };
     this.target = { x: 0, z: 0 };
+    // Ground height under the creature. Always 0 in the garden; in a real room
+    // it steps up onto tables and drops back to the floor.
+    this.y = 0;
+    this.fromY = 0;
+    this.targetY = 0;
+    this.face = null;
     this.call = false;
+    this.affectionCount = 0;
+    this.variant = 0;
   }
   random() {
     this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0;
@@ -117,11 +146,16 @@ export class WanderController {
   }
   // Walk toward a point. Large heading changes pivot first, so the creature
   // turns to face where it is going instead of snapping or moon-walking.
-  goTo(x, z, called = false) {
+  goTo(x, z, called = false, detail = null) {
     this.from = { x: this.x, z: this.z };
-    this.target = boundedTarget(x, z);
+    this.target = this.bounds.clamp(x, z, detail?.surface);
     this.call = called;
-    this.activity = called ? 'Coming to say hello' : CREATURES[this.species].motion;
+    this.fromY = this.y;
+    this.targetY = detail?.y ?? this.bounds.heightAt(this.target.x, this.target.z, detail?.surface);
+    this.face = detail?.face ?? null;
+    this.activity = called
+      ? 'Coming to say hello'
+      : (detail?.activity ?? CREATURES[this.species].motion);
     const previous = this.heading;
     this.heading = Math.atan2(this.target.x - this.from.x, this.target.z - this.from.z);
     // The pivot is decided from the committed heading, never from the smoothed
@@ -159,12 +193,20 @@ export class WanderController {
     this.yawTo = this.gaze();
   }
   react() {
+    this.variant = this.affectionCount++ % 3;
     this.state = 'cuddle';
     this.elapsed = 0;
-    this.duration = 2.4;
+    this.duration = 3.2;
     this.activity = 'That is the spot!';
     // Affection is always given face to face.
     this.yawTo = this.gaze(0.3, 0);
+  }
+  peekaboo() {
+    this.state = 'peekaboo';
+    this.elapsed = 0;
+    this.duration = 3.4;
+    this.activity = 'Where did I go? … Here I am!';
+    this.yawTo = 0;
   }
   // The per-species signature move. Fires on its own and on demand.
   trick() {
@@ -173,20 +215,17 @@ export class WanderController {
     this.duration = 3.6;
     this.activity = CREATURES[this.species].trick;
     // Show off to someone: mostly toward the player.
-    this.yawTo = this.gaze(0.98, 0.39);
+    this.yawTo = this.gaze(0.45, 0.08);
   }
   comeHere(x = 0, z = BOUNDS.z * 0.62) {
     return this.goTo(x, z, true);
   }
   wanderTarget() {
-    const a = this.random(),
-      // Skewed toward the front of the shallow platform, so trips more often
-      // end heading toward the player than away from them.
-      b = this.random() ** 0.45;
-    return {
-      x: (a - 0.5) * 2 * BOUNDS.x * this.profile.reach,
-      z: (b - 0.5) * 2 * BOUNDS.z * this.profile.reach,
-    };
+    return this.bounds.wanderTarget(() => this.random(), this.profile, {
+      x: this.x,
+      z: this.z,
+      y: this.y,
+    });
   }
   // One state transition. The leftover time is carried into the next state so
   // the schedule depends on elapsed seconds, never on where frames landed.
@@ -200,20 +239,23 @@ export class WanderController {
     } else if (this.state === 'walk') {
       this.x = this.target.x;
       this.z = this.target.z;
+      this.y = this.targetY;
       this.trip++;
       if (this.call) {
         this.call = false;
         this.react();
       } else this.inspect();
-    } else if (!this.roam) this.inspect(5, 'Ready for a little adventure');
-    else if (
+    } else if (!this.roam) {
+      this.inspect(5, 'Just happy to be here with you');
+      this.yawTo = this.gaze(0.2, 0);
+    } else if (
       this.state === 'inspect' &&
       this.trip % this.profile.tricks === this.profile.tricks - 1
     )
       this.trick();
     else {
       const spot = this.wanderTarget();
-      this.goTo(spot.x, spot.z);
+      this.goTo(spot.x, spot.z, false, spot);
     }
     this.elapsed = carry;
   }
@@ -243,12 +285,17 @@ export class WanderController {
         this.profile.wobble *
         Math.sin(Math.PI * phase) *
         (this.reducedMotion ? 0.35 : 1);
-      const spot = boundedTarget(
+      const spot = this.bounds.clamp(
         this.from.x + dx * u - (dz / length) * sway,
         this.from.z + dz * u + (dx / length) * sway,
+        // Mid-step the creature may be between two real surfaces, so the
+        // strategy is told where it set out from as well as where it is going.
+        this.target.surface,
+        this.from.surface,
       );
       this.x = spot.x;
       this.z = spot.z;
+      this.y = this.fromY + (this.targetY - this.fromY) * u;
       const remaining = Math.hypot(this.target.x - this.x, this.target.z - this.z);
       // Facing is a function of position only, so it is frame-rate independent.
       targetYaw =
@@ -256,7 +303,10 @@ export class WanderController {
           ? Math.atan2(this.target.x - this.x, this.target.z - this.z)
           : this.heading;
       moving = Math.min(1, Math.sin(Math.PI * phase) * 1.4);
-    } else targetYaw = this.yawTo; // resting, cuddling or showing off: hold the chosen gaze
+    } else if (this.state === 'inspect' && this.face)
+      // The room asked for a specific facing — looking out over a real edge.
+      targetYaw = Math.atan2(this.face.x, this.face.z);
+    else targetYaw = this.yawTo; // resting, cuddling or showing off: hold the chosen gaze
     if (this.state !== 'turn') {
       // Exponential easing composes exactly across differently sized steps.
       const angle = shortest(targetYaw - this.yaw);
@@ -273,6 +323,7 @@ export class WanderController {
       time: this.time,
       x: this.x,
       z: this.z,
+      y: this.y,
       yaw: this.yaw,
       moving,
       gait: this.gait,
@@ -280,6 +331,7 @@ export class WanderController {
       speed: this.speed,
       energy,
       action: this.state,
+      variant: this.variant,
       phase,
       target: this.target,
       activity: this.activity,

@@ -2,7 +2,7 @@ export const CREATURES = {
   dragon: {
     name: 'Pocket Dragon',
     color: 'peach',
-    trait: 'Little wings. Big ambitions.',
+    trait: 'Practises flying. Mostly needs a hug.',
     motion: 'Scampering',
     trick: 'Trying a flying hop',
     voice: 'dragon',
@@ -10,7 +10,7 @@ export const CREATURES = {
   mothkit: {
     name: 'Mothkit',
     color: 'lilac',
-    trait: 'A daydream in a wing cape.',
+    trait: 'A sleepy little soul in a blanket of wings.',
     motion: 'Following the fireflies',
     trick: 'Fluttering its wing cape',
     voice: 'mothkit',
@@ -18,7 +18,7 @@ export const CREATURES = {
   otter: {
     name: 'Puddle Otter',
     color: 'sky',
-    trait: 'A puddle with a personality.',
+    trait: 'Soft as mochi. Very proud of its tiny paws.',
     motion: 'Waddling along',
     trick: 'Doing a jelly belly-slide',
     voice: 'otter',
@@ -26,7 +26,7 @@ export const CREATURES = {
   imp: {
     name: 'Bloom Imp',
     color: 'mint',
-    trait: 'A tiny, leafy mischief-maker.',
+    trait: 'Big ears. Tiny sneezes. Absolutely no thoughts.',
     motion: 'Hunting for treasures',
     trick: 'Sneezing a shower of petals',
     voice: 'imp',
@@ -34,7 +34,7 @@ export const CREATURES = {
   ferret: {
     name: 'Comet Ferret',
     color: 'lilac',
-    trait: 'A little streak of starlight.',
+    trait: 'Chases its tail. Always comes back to you.',
     motion: 'Weaving through the meadow',
     trick: 'Chasing its orbital tail',
     voice: 'ferret',

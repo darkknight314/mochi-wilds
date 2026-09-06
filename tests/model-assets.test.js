@@ -14,7 +14,7 @@ test('every downloadable GLB loads with a working skeleton and four playable ani
       '',
     );
     const root = gltf.scene.getObjectByName(`mochi_${species}`);
-    assert.equal(root.userData.assetVersion, 3);
+    assert.equal(root.userData.assetVersion, 4);
     const tail = root.getObjectByName('soft_tail');
     assert.ok(tail?.isSkinnedMesh && tail.skeleton.bones.length >= 4);
     assert.deepEqual(

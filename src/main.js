@@ -142,7 +142,7 @@ function home() {
     ) +
     `
  <div class="garden-grid"><section class="habitat ${pet.habitat === 'moon' ? 'moonlight' : ''}"><div class="habitat-top"><span class="glass-pill"><i></i> ${pet.habitat === 'moon' ? 'Moonlight meadow' : 'Cloudberry meadow'}</span><button class="glass-icon" data-action="snapshot" aria-label="Save a memory">${icon('camera')}</button></div><div class="habitat-copy"><span class="tiny-tag">YOUR EVERYDAY KIND OF MAGIC</span><h2>Hey, ${esc(pet.name)}.</h2><p>${pet.health < 40 ? 'A fresh start is a cuddle away.' : 'The world is better with you in it.'}</p></div><div id="pet-stage" role="button" tabindex="0" aria-label="Give your spirit affection"></div><div class="pet-speech">${pet.affection < 35 ? 'A little time together?' : 'Oh! My favorite human.'}<span>✧</span></div><div class="habitat-bottom"><span class="habitat-hint">${icon('heart')} Tap your spirit to say hello</span>${button('Meet in your world', 'ar', 'ar-button', 'camera')}</div><div id="particles" aria-hidden="true"></div></section>
- <section class="pet-card"><div class="section-overline">YOUR ONE-OF-A-KIND SPIRIT<button class="icon-button" data-action="customize" aria-label="Edit spirit">${icon('edit')}</button></div><div class="pet-identity">${miniPet(pet)}<div><h2>${esc(pet.name)}</h2><span>${esc(creatureOf(pet).name)} <i>•</i> ${esc(creatureOf(pet).trait)}</span></div></div><div class="level-row"><b>${icon('sparkles')} Level ${xp.level}</b><span>${Math.floor(xp.value)} / ${xp.max} XP</span></div><div class="progress-track"><i style="width:${(xp.value / xp.max) * 100}%"></i></div><p class="level-caption">Growing a little more magical, every day.</p><div class="vitals">${stat('heart', 'Vitality', pet.health, 'pink')}${stat('sun', 'Energy', pet.energy, 'butter')}${stat('sparkles', 'Bond', pet.affection, 'lavender')}</div><div class="mood-note">${icon('leaf')} ${pet.health > 60 ? 'Feeling bright & full of wonder' : 'Ready for a little care'}</div>${button('Give a little love', 'affection', 'primary full', 'heart')}<button class="text-button full" data-action="customize">Make them yours ${icon('arrow')}</button></section></div>
+ <section class="pet-card"><div class="section-overline">YOUR ONE-OF-A-KIND SPIRIT<button class="icon-button" data-action="customize" aria-label="Edit spirit">${icon('edit')}</button></div><div class="pet-identity">${miniPet(pet)}<div><h2>${esc(pet.name)}</h2><span>${esc(creatureOf(pet).name)} <i>•</i> ${esc(creatureOf(pet).trait)}</span></div></div><div class="level-row"><b>${icon('sparkles')} Level ${xp.level}</b><span>${Math.floor(xp.value)} / ${xp.max} XP</span></div><div class="progress-track"><i style="width:${(xp.value / xp.max) * 100}%"></i></div><p class="level-caption">Growing a little more magical, every day.</p><div class="vitals">${stat('heart', 'Vitality', pet.health, 'pink')}${stat('sun', 'Energy', pet.energy, 'butter')}${stat('sparkles', 'Bond', pet.affection, 'lavender')}</div><div class="mood-note">${icon('leaf')} ${pet.health > 60 ? 'Feeling bright & full of wonder' : 'Ready for a little care'}</div>${button('Give a little love', 'affection', 'primary full', 'heart')}<div class="companion-play">${button('Peekaboo', 'peekaboo', 'secondary', 'sparkles')}${button('Say hello', 'pet-hello', 'secondary', 'volume')}</div><button class="text-button full" data-action="customize">Make them yours ${icon('arrow')}</button></section></div>
  <div class="lower-grid"><section class="daily-card"><div class="section-title"><div><span class="eyebrow">LITTLE RITUALS, BIG FEELINGS</span><h2>Your daily dose of happy</h2></div><span class="streak">${icon('zap')} ${pet.streak} day streak</span></div><div class="tasks">${tasks.map((t) => `<button class="task ${t.done ? 'done' : ''}" data-action="${t.action}"><span class="tile-icon ${t.color}">${icon(t.done ? 'check' : t.icon)}</span><span class="task-copy"><b>${t.title}</b><small>${t.sub}</small></span><span class="task-count">${t.done ? icon('check') : t.val}</span></button>`).join('')}</div><div class="daily-reward"><span>${icon('gift')} Complete your rituals <b>+100 stardust</b></span><button data-action="claim" ${!all || pet.daily.claimed ? 'disabled' : ''}>${pet.daily.claimed ? 'Collected' : all ? 'Collect reward' : 'A little each day'}</button></div></section><section class="adventure-card"><div class="adventure-symbol">${icon('compass')}</div><span class="eyebrow">BETTER, TOGETHER</span><h2>Five little wilds.<br>Endless possibilities.</h2><p>Pocket dragons, mothkits, puddle otters and friends, ready to meet their world.</p><button class="text-button" data-page="friends">Find your playmates ${icon('arrow')}</button><div class="friends-preview">${miniPet({ species: 'mothkit', color: 'peach' })}${miniPet({ species: 'imp', color: 'mint' })}${miniPet({ species: 'otter', color: 'sky' })}<span>A whole world of friends</span></div></section></div>`
   );
 }
@@ -697,6 +697,25 @@ async function snapshot() {
   persist();
   toast('A little moment, kept forever. Find it in Memories.');
 }
+// Say plainly what the app can currently see of the room. Vague reassurance
+// here reads as a bug when the creature then refuses to leave one spot.
+function describeRoom(room) {
+  const status = $('#ar-status');
+  const hint = $('#ar-hint');
+  if (!status || !hint) return;
+  if (!room.known) {
+    status.textContent = 'Looking for your room…';
+    hint.textContent = 'Move slowly so your spirit can find somewhere to play.';
+    return;
+  }
+  const surfaces = room.walkable;
+  const named = [...new Set(surfaces.map((s) => s.semantic).filter((s) => s !== 'unknown'))];
+  status.textContent =
+    surfaces.length > 1 ? `Found ${surfaces.length} surfaces` : 'Found somewhere to play';
+  hint.textContent = named.length
+    ? `${pet.name} can explore your ${named.join(' and ')}.`
+    : `${pet.name} is exploring the space around you.`;
+}
 async function startAR() {
   openModal(
     `<span class="eyebrow">A LITTLE MAGIC, IN YOUR WORLD</span><h2>Make room for wonder.</h2><p>Place ${esc(pet.name)} in the world around you.</p><div class="ar-choice">${icon('camera')}<p>On compatible Android browsers, spatial AR finds a surface. Other devices use a live camera with a movable 3D spirit.</p></div>${button('Open camera experience', 'launch-ar', 'primary full', 'camera')}<p class="fine-print">Camera frames stay on your device. You can also try the interactive preview without a camera.</p>${button('Try without a camera', 'preview-ar', 'text-button full')}`,
@@ -709,6 +728,9 @@ async function launchAR(preview = false) {
   overlay.innerHTML = `<div class="ar-shell" id="ar-overlay"><video id="ar-video" autoplay playsinline muted></video><div class="ar-preview-bg"></div><div id="ar-stage"></div><div class="ar-controls"><button class="glass-icon" data-action="stop-ar" aria-label="Close AR">${icon('close')}</button><span class="glass-pill" id="ar-status">${preview ? 'Interactive preview' : 'Opening your camera…'}</span></div><div class="ar-bottom"><p id="ar-hint">Drag to place your spirit · use the slider to resize</p><label>Spirit size <input id="ar-size" type="range" min="0.4" max="1.6" value="1" step="0.05"></label>${button('Send some love', 'ar-love', 'ar-button', 'heart')}</div></div>`;
   try {
     arScene = new PetScene($('#ar-stage'), pet, { garden: false });
+    // A development-only handle, so the end-to-end tests can inspect what the
+    // app believes about the room. Stripped from production builds.
+    if (import.meta.env?.DEV) globalThis.__arScene = arScene;
   } catch {
     toast('3D rendering is unavailable on this device.');
     stopAR();
@@ -717,9 +739,22 @@ async function launchAR(preview = false) {
   if (!preview && (await navigator.xr?.isSessionSupported?.('immersive-ar').catch(() => false))) {
     try {
       $('.ar-shell').classList.add('spatial');
-      await arScene.startXR(() => {
-        if (arActive) stopAR();
-      });
+      await arScene.startXR(
+        () => {
+          if (arActive) stopAR();
+        },
+        {
+          // Fires when the room first becomes known, and again if tracking is
+          // lost — the caption is the only way the player can tell whether the
+          // creature is exploring real furniture or just staying near them.
+          onRoom: (room) => describeRoom(room),
+          onFeatures: ({ planes }) => {
+            if (planes === false)
+              $('#ar-hint').textContent =
+                'This browser will not share surfaces, so your spirit will play near where you place it.';
+          },
+        },
+      );
       $('#ar-status').textContent = 'Spatial AR · scan a surface';
       $('#ar-hint').textContent =
         'Move your phone slowly, then tap the mint ring to place your spirit.';
@@ -753,6 +788,17 @@ async function launchAR(preview = false) {
   }
   if (!arActive) return;
   const stage = $('#ar-stage');
+  if (!preview && arStream) {
+    // Without WebXR the browser will not tell us where the floor is, so the
+    // player does: one tap, and the creature gets a real patch of room to
+    // explore instead of hovering in front of the lens.
+    arScene.startCameraRoom($('#ar-video'), { onRoom: (room) => describeRoom(room) });
+    $('#ar-hint').textContent = 'Tap where the floor is, and your spirit will explore that spot.';
+    stage.addEventListener('click', (e) => {
+      arScene.roomProvider?.placeGround?.(e.clientY / innerHeight);
+      $('#ar-hint').textContent = 'Drag to move the view · use the slider to resize';
+    });
+  }
   stage.onpointerdown = (e) => {
     stage.setPointerCapture(e.pointerId);
   };
@@ -773,6 +819,7 @@ function stopAR() {
   arStream = null;
   arScene?.destroy();
   arScene = null;
+  if (import.meta.env?.DEV) globalThis.__arScene = null;
   overlay.innerHTML = '';
   if (scene) scene.paused = page !== 'home';
 }
@@ -817,6 +864,8 @@ function soundSettings() {
 const actions = {
   customize,
   affection,
+  peekaboo: () => scene?.peekaboo(),
+  'pet-hello': () => scene?.greet(),
   ar: startAR,
   'launch-ar': () => launchAR(),
   'preview-ar': () => launchAR(true),

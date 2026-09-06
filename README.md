@@ -27,9 +27,15 @@ Open **http://localhost:3001**. The Node server serves the entire build and WebS
 
 ## Meet the creatures in 3D
 
+### A softer little personality
+
+The companions now have fuller cheeks, lower-set warm eyes, and more compact head/body proportions. Puddle Otter has a milky mochi coat and cream belly. Cuddles unfold over 3.2 seconds: they notice you, lean in, squeeze their tiny paws, smile, and settle. Repeated cuddles alternate their lean and expression. Quiet moments include curious head tilts, double blinks, and sleepy eyelids; desktop pointer movement gently guides their gaze.
+
+Try **Peekaboo** and **Say hello** in the garden or gallery. Peekaboo hides the face behind the paws, pauses, then opens into a happy reveal with a little voice. The ten creature calls are newly synthesized breathy vowel performances, with distinct pitches, rhythms, and purring textures for each species. Playback varies their delivery slightly. Mute, volume, background suspension, and reduced-motion preferences still apply. The gallery is the quickest place to judge the look, motion, and sound together.
+
 Open **http://localhost:5173/creatures.html** for the interactive 3D gallery: Pocket Dragon, Mothkit, Puddle Otter, Bloom Imp, and Comet Ferret. Rotate each model, cuddle it, watch its signature trick, and hear its own voice. The same revised models appear in the garden, adoption/customization, and AR. The earlier concept artwork and soundboard remain at `/creature-lab.html` in development.
 
-The latest models have continuous cheek surfaces with painted blush, inset glossy eyes, crescent-eye cuddle expressions, tiny smiles, padded ears, and smooth tails with real skinning. Pastel coats use soft sheen; the jelly companion uses transmission. Breathing, blinking, head tilts, ear flops, paw steps, and species-specific tricks make them responsive. Offscreen gallery scenes suspend rendering; visible gallery scenes are limited to 30 fps. The garden retains its roaming controller.
+The latest models have continuous cheek surfaces with painted blush, inset glossy eyes, crescent-eye cuddle expressions, tiny smiles, padded ears, and smooth tails with real skinning. Pastel coats use soft sheen; the otter uses an opaque, softly glazed material. Breathing, blinking, head tilts, ear flops, paw steps, and species-specific tricks make them responsive. Offscreen gallery scenes suspend rendering; visible gallery scenes are limited to 30 fps. The garden retains its roaming controller.
 
 Five self-contained **GLB files** are included in `public/assets/models/`, with **Idle, Walk, Signature, and Affection** animation clips. Download them from the gallery or import them into a glTF-compatible 3D editor. The live app generates its models from the same source, so no model downloads are needed to start playing. Regenerate exports after model edits with `npm run assets:models`.
 
@@ -39,6 +45,24 @@ The five approved companions are now implemented as articulated procedural 3D mo
 
 To regenerate them deterministically: `npm run assets:sounds`. Definitions: `src/sound-design.js`; playback: `src/audio.js`; generator: `scripts/generate-sounds.js`. No external recordings or sound-service credentials are used.
 
+## Your spirit explores your actual room
+
+AR is not a sticker on a camera feed. The app builds a model of the room it is in — walkable surfaces with real heights and semantic labels, obstacles, and measured ambient light — and the creature's roaming controller navigates that model instead of a fixed platform. It walks your floor, climbs onto your table, drops back down, walks out to a real edge and looks over it, ducks behind things, and curls up when the room is dark.
+
+One interface, `RoomModel` (`src/room-model.js`), describes the room; two providers build it, so the behaviour is written once and every browser gets a version of it:
+
+|           | `XRRoomProvider`                                             | `CameraRoomProvider`                                           |
+| --------- | ------------------------------------------------------------ | -------------------------------------------------------------- |
+| Where     | Android Chrome (WebXR)                                       | Every browser: desktop, iOS Safari, native                     |
+| Surfaces  | Real `plane-detection` polygons with floor/table/seat labels | One ground plane the player places with a tap                  |
+| Light     | `light-estimation` spherical harmonics and primary direction | Rec. 709 luminance and colour cast measured from camera frames |
+| Placement | `hit-test` reticle                                           | Tap position, read as a depth cue                              |
+| Stability | Runtime tracking state                                       | Sparse optical flow across a 16x12 luminance grid              |
+
+Every WebXR feature beyond `hit-test` is requested as optional. A browser that refuses plane detection still gets a session, a synthesised floor around the placed spot, and honestly reduced confidence — and the behaviour layer responds to low confidence by keeping the creature close rather than marching it through furniture it cannot see. Sensed geometry also drives rendering (`src/room-view.js`): walkable surfaces become shadow catchers so the creature's shadow lands on your real table, walls become invisible depth-writing occluders so it is genuinely hidden when it goes behind one, and the key light follows the room's measured brightness and colour.
+
+The garden is untouched. `WanderController` now takes a bounds strategy; the garden keeps its ellipse (`ELLIPSE_BOUNDS`) and AR passes a `RoomBounds` backed by the live model.
+
 ## A three-minute hackathon demo
 
 1. Visit `/creatures.html` to meet all five companions, hear their voices, and try their tricks. Return to the garden and create **Lumi**, a mint Bloom Imp. Try the five species and five colors in the live 3D preview.
@@ -47,7 +71,7 @@ To regenerate them deterministically: `npm run assets:sounds`. Definitions: `src
 4. Open **Play together → Play with a practice spirit**. Pick Spark, Bloom, or Bubble for three rounds. Then collect the daily ritual reward in My garden.
 5. Open a second browser or an incognito window. Create another spirit, create a friend room on the first device, and join its six-character code on the second. Try a duel, then choose Harmony for a cooperative game.
 6. Open **Boutique**, buy a Stardust halo using the sandbox confirmation, and return to the garden to see it equipped. Prism heart boosts care XP by 25%; Bloom crown and Moonlight garden change the look.
-7. Try **Meet in your world**. Use live camera mode, supported Android browser spatial AR, or the camera-free 3D preview.
+7. Try **Meet in your world**. Your spirit explores the room it is put in: it walks your real floor, climbs onto your table, hops back down, peers over real edges, and settles when the room goes dark. Use supported Android browser spatial AR, live camera mode (tap once to say where the floor is), or the camera-free 3D preview.
 8. Tap the camera at the top of the garden. Open **Memories** to see your snapshot, walks, and games. Reload to demonstrate persistence.
 
 ## iOS and Android
@@ -165,6 +189,8 @@ PLAYWRIGHT_CHANNEL=chromium npm run test:e2e
 ```
 
 The checks cover care and purchases, save migration, real multiplayer sockets, frame-independent movement, sound assets and limiting, rig/expression transforms, GLB loading and animation, mobile layouts, and browser gameplay. The creature gallery suite also captures desktop and mobile close-ups and exercises all five cuddle/trick/voice combinations.
+
+Room sensing is covered at every tier: the geometry, behaviour, bounds, and camera-frame analysis are unit tested (`tests/room-*.test.js`, `tests/camera-room.test.js`), and `tests/e2e/ar-room.spec.js` drives the camera tier end to end against Chrome's synthetic webcam. The WebXR provider's plane, light, and depth handling needs a real device.
 
 Browser screenshots are written to `test-results/garden-desktop.png`, `test-results/garden-mobile.png`, `test-results/creature-lineup-3d.png`, and individual `test-results/creature-*.png` close-ups. Physical-device GPS, camera permissions, and spatial AR need a compatible phone to verify; headless tests exercise the no-camera fallback. Native code and permissions are included; see platform build results above.
 

@@ -48,7 +48,7 @@ header button {
   font-size: 11px;
 }
 main {
-  max-width: 1450px;
+  max-width: 1250px;
   margin: auto;
   padding: 0 36px;
 }
@@ -140,11 +140,13 @@ h1 em {
   margin: 0 0 22px;
 }
 .creature-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   justify-content: center;
   gap: 9px;
 }
 .creature-actions button {
+  min-height: 44px;
   background: #fffaf6b8;
   border: 1px solid #e5d6e3;
   border-radius: 12px;
@@ -194,20 +196,20 @@ input:focus-visible,
 }
 @media (min-width: 1250px) {
   .creature-grid {
-    grid-template-columns: repeat(5, 1fr);
-    gap: 14px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
   }
   .creature-card {
     padding: 18px 12px;
   }
   .model-view {
-    height: 300px;
+    height: 350px;
   }
   .card-heading {
     gap: 8px;
   }
   .card-heading h2 {
-    font-size: 14px;
+    font-size: 18px;
   }
   .creature-actions {
     gap: 5px;
@@ -260,7 +262,7 @@ input:focus-visible,
     font-size: 19px;
   }
   .creature-actions button {
-    padding: 12px 20px;
+    padding: 12px 10px;
     font-size: 12px;
   }
   header {

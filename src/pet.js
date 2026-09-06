@@ -2,7 +2,12 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createCreature, poseCreature, disposeCreature } from './creature-model.js';
 import { speciesOf } from './creatures.js';
-import { WanderController, MAX_DELTA } from './motion.js';
+import { WanderController, MAX_DELTA, ELLIPSE_BOUNDS } from './motion.js';
+import { RoomBounds } from './room-bounds.js';
+import { RoomView } from './room-view.js';
+import { UNKNOWN_ROOM } from './room-model.js';
+import { XRRoomProvider, OPTIONAL_FEATURES } from './room-providers/xr-room.js';
+import { CameraRoomProvider } from './room-providers/camera-room.js';
 import { audio } from './audio.js';
 export { createCreature as createPet } from './creature-model.js';
 const appearanceOf = (pet) => JSON.stringify([speciesOf(pet), pet.color, pet.accessory]);
@@ -33,6 +38,10 @@ export class PetScene {
     this.lastFrame = null;
     this.turn = 0;
     this.paused = false;
+    this.gaze = { x: 0, y: 0 };
+    this.gazeTarget = { x: 0, y: 0 };
+    this.voiceUntil = 0;
+    this.pendingVoice = null;
     this.reducedMotion =
       reducedMotion ??
       (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches || false);
@@ -71,6 +80,7 @@ export class PetScene {
     key.shadow.bias = -0.0001;
     key.shadow.radius = 4;
     this.scene.add(key);
+    this.key = key;
     const rim = new THREE.DirectionalLight('#e0d5ff', 1.6);
     rim.position.set(4, 3, -3);
     this.scene.add(rim);
@@ -79,6 +89,17 @@ export class PetScene {
     this.pet = createCreature(pet);
     this.appearance = appearanceOf(pet);
     this.anchor.add(this.pet);
+    // Room sensing is off until an AR session asks for it; the garden and the
+    // gallery keep the fixed ellipse they have always had.
+    this.roomBounds = null;
+    this.roomProvider = null;
+    // In a real room the anchor stays at unit scale and everything in it is
+    // shrunk instead, so the roaming controller can work in real metres.
+    this.creatureScale = 1;
+    this.roomVideo = null;
+    this.roomView = null;
+    this.room = UNKNOWN_ROOM;
+    this.onRoom = () => {};
     this.motion = new WanderController(speciesOf(pet), { roam, reducedMotion: this.reducedMotion });
     this.base = new THREE.Group();
     this.scene.add(this.base);
@@ -121,6 +142,26 @@ export class PetScene {
     }
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
+    this.trackPointer = (event) => {
+      if (event.pointerType === 'touch') return;
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.gazeTarget.x = THREE.MathUtils.clamp(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -1,
+        1,
+      );
+      this.gazeTarget.y = THREE.MathUtils.clamp(
+        1 - ((event.clientY - rect.top) / rect.height) * 2,
+        -1,
+        1,
+      );
+    };
+    this.releaseGaze = () => {
+      this.gazeTarget.x = 0;
+      this.gazeTarget.y = 0;
+    };
+    this.renderer.domElement.addEventListener('pointermove', this.trackPointer);
+    this.renderer.domElement.addEventListener('pointerleave', this.releaseGaze);
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(container);
     this.io = new IntersectionObserver(
@@ -158,7 +199,11 @@ export class PetScene {
   }
   // A hello in the creature's own voice whenever it first appears or changes.
   greet() {
-    this.onCue(`${this.pet.rig.species}-hello`);
+    this.say('hello');
+  }
+  say(kind) {
+    this.onCue(`${this.pet.rig.species}-${kind}`);
+    this.voiceUntil = this.time + (kind === 'hello' ? 1.1 : 1.4);
   }
   buildGarden() {
     const mat = new THREE.MeshStandardMaterial({ color: '#cad9b7', roughness: 1 });
@@ -232,33 +277,65 @@ export class PetScene {
       this.lastFrame === null ? 0 : Math.min(MAX_DELTA, Math.max(0, (t - this.lastFrame) / 1000));
     this.lastFrame = t;
     if (document.hidden || this.paused || (!this.inView && !this.renderer.xr.isPresenting)) return;
+    if (this.roomProvider) {
+      if (frame) {
+        this.applyRoom(this.roomProvider.update(frame, this.renderer.xr.getReferenceSpace()));
+      } else if (this.roomVideo) {
+        this.applyRoom(this.roomProvider.update(dt, this.roomVideo));
+      }
+    }
     if (!this.paused) {
       this.time += dt;
       this.pose = this.motion.update(dt);
-      poseCreature(this.pet, this.time, this.pose);
-      this.pet.position.set(this.pose.x, this.pose.lift, this.pose.z);
+      if (this.pendingVoice && this.time >= this.pendingVoice.at) {
+        this.say(this.pendingVoice.kind);
+        this.pendingVoice = null;
+      }
+      const follow = 1 - Math.exp(-dt * 5);
+      this.gaze.x += (this.gazeTarget.x - this.gaze.x) * follow;
+      this.gaze.y += (this.gazeTarget.y - this.gaze.y) * follow;
+      const talking =
+        this.time < this.voiceUntil
+          ? Math.max(0, Math.sin((this.voiceUntil - this.time) * 18)) * 0.7
+          : 0;
+      poseCreature(this.pet, this.time, {
+        ...this.pose,
+        lookX: this.gaze.x,
+        lookY: this.gaze.y,
+        talking,
+      });
+      // `y` is the height of the real surface underfoot — zero everywhere but
+      // in a sensed room, where it steps up onto tables and drops back down.
+      this.pet.position.set(this.pose.x, (this.pose.y || 0) + this.pose.lift, this.pose.z);
       this.pet.rotation.y = this.pose.yaw + this.turn;
       this.lead();
       if (this.pose.activity !== this.activity) {
         this.activity = this.pose.activity;
         this.container.dataset.activity = this.activity;
         this.onActivity(this.activity);
-        if (this.pose.action === 'trick') this.onCue(`${speciesOf(this.pet.userData)}-happy`);
+        if (this.pose.action === 'trick') this.say('happy');
+        else if (this.pose.action === 'cuddle')
+          this.pendingVoice = { at: this.time + 0.35, kind: 'happy' };
         else if (this.pose.action === 'walk' || this.pose.action === 'turn') this.onCue('hop');
       }
       this.container.dataset.species = this.pet.rig.species;
       this.destination.visible = this.motion.state === 'walk' || this.motion.state === 'turn';
-      this.destination.position.set(this.motion.target.x, 0.012, this.motion.target.z);
+      // The destination marker sits on whichever real surface is being walked to.
+      this.destination.position.set(
+        this.motion.target.x,
+        (this.motion.targetY || 0) + 0.012,
+        this.motion.target.z,
+      );
       this.destination.material.opacity = 0.4 + 0.2 * Math.sin(this.time * 4);
       const burst =
-        (this.pose.action === 'cuddle' || this.pose.action === 'trick'
+        (['cuddle', 'trick', 'peekaboo'].includes(this.pose.action)
           ? Math.sin(Math.PI * this.pose.phase)
           : 0) * (this.pose.energy || 0.35);
       this.particles.forEach((p, i) => {
         const a = i * 2.4 + this.time * 0.5;
         p.position.set(
           this.pose.x + Math.cos(a) * (0.3 + burst * 0.45),
-          0.3 + ((i / 14 + this.pose.phase) % 1) * 1.65,
+          (this.pose.y || 0) + 0.3 + ((i / 14 + this.pose.phase) % 1) * 1.65,
           this.pose.z + Math.sin(a) * 0.45,
         );
         p.material.opacity = burst * 0.65;
@@ -282,6 +359,7 @@ export class PetScene {
     disposeCreature(this.pet);
     this.anchor.remove(this.pet);
     this.pet = createCreature(pet);
+    this.pet.scale.setScalar(this.creatureScale);
     this.anchor.add(this.pet);
     this.motion = new WanderController(speciesOf(pet), {
       roam: this.roam,
@@ -289,6 +367,7 @@ export class PetScene {
     });
     this.time = 0;
     this.activity = null;
+    this.pendingVoice = null;
     this.greet();
   }
   setReducedMotion(value) {
@@ -297,11 +376,15 @@ export class PetScene {
   }
   react() {
     this.motion.react();
-    this.onCue(`${this.pet.rig.species}-happy`);
+    this.pendingVoice = { at: this.time + 0.35, kind: 'happy' };
   }
   trick() {
+    this.pendingVoice = null;
     this.motion.trick();
-    this.onCue(`${this.pet.rig.species}-happy`);
+  }
+  peekaboo() {
+    this.motion.peekaboo();
+    this.pendingVoice = { at: this.time + 1.7, kind: 'hello' };
   }
   comeHere() {
     this.motion.comeHere();
@@ -329,10 +412,65 @@ export class PetScene {
   disposeGroup(group) {
     disposeCreature(group);
   }
-  async startXR(onEnd) {
+  /**
+   * Turn on room sensing. The creature stops roaming a fixed ellipse and starts
+   * roaming whatever surfaces the given provider reports. Safe to call twice.
+   */
+  enableRoom(provider, { onRoom = () => {} } = {}) {
+    this.roomProvider = provider;
+    this.onRoom = onRoom;
+    this.roomBounds = new RoomBounds(UNKNOWN_ROOM).scaleTo(this.motion.profile);
+    this.motion.bounds = this.roomBounds;
+    this.roomView = this.roomView || new RoomView(this.scene, { key: this.key });
+    return this;
+  }
+  /**
+   * Scale the creature and its effects without scaling the anchor, so that a
+   * metre in the roaming controller stays a metre in the player's room.
+   */
+  setCreatureScale(scale) {
+    this.creatureScale = scale;
+    this.pet.scale.setScalar(scale);
+    this.destination.scale.setScalar(scale);
+    for (const p of this.particles) p.scale.setScalar(scale);
+  }
+  /** Feed a freshly sensed room to behaviour and rendering. */
+  applyRoom(room) {
+    if (!room || !this.roomBounds) return;
+    const known = room.known;
+    const wasKnown = this.room.known;
+    this.room = room;
+    this.roomBounds.setRoom(room);
+    this.roomView?.update(room);
+    if (known !== wasKnown) this.onRoom(room);
+  }
+  /** Stop room sensing and hand the creature back its fixed roaming area. */
+  disableRoom() {
+    this.roomProvider?.dispose?.();
+    this.roomProvider = null;
+    this.roomView?.dispose();
+    this.roomView = null;
+    this.roomBounds = null;
+    this.roomVideo = null;
+    this.room = UNKNOWN_ROOM;
+    this.motion.bounds = ELLIPSE_BOUNDS;
+    this.motion.y = 0;
+    this.motion.fromY = 0;
+    this.motion.targetY = 0;
+  }
+  /** Camera-only room sensing, for browsers without WebXR. */
+  startCameraRoom(video, options = {}) {
+    const provider = new CameraRoomProvider();
+    this.enableRoom(provider, options);
+    this.roomVideo = video;
+    return provider;
+  }
+  async startXR(onEnd, { onRoom = () => {}, onFeatures = () => {} } = {}) {
     const session = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test'],
-      optionalFeatures: ['dom-overlay'],
+      // Everything that makes the room real is optional: a browser that
+      // refuses any of it still gets a working session, just a simpler room.
+      optionalFeatures: ['dom-overlay', ...OPTIONAL_FEATURES],
       domOverlay: { root: document.getElementById('ar-overlay') },
     });
     this.xrSession = session;
@@ -343,6 +481,16 @@ export class PetScene {
       this.anchor.visible = false;
       const viewer = await session.requestReferenceSpace('viewer');
       this.hitSource = await session.requestHitTestSource({ space: viewer });
+      const provider = new XRRoomProvider();
+      this.enableRoom(provider, { onRoom });
+      await provider.requestLightProbe(session);
+      const enabled = session.enabledFeatures;
+      onFeatures({
+        // `enabledFeatures` is itself optional; without it we find out whether
+        // planes are really coming when the first frame reports some.
+        planes: enabled ? enabled.includes('plane-detection') : null,
+        light: !!provider.lightProbe,
+      });
       this.reticle = new THREE.Mesh(
         new THREE.RingGeometry(0.12, 0.15, 40).rotateX(-Math.PI / 2),
         new THREE.MeshBasicMaterial({ color: '#acedd0' }),
@@ -351,12 +499,19 @@ export class PetScene {
       this.reticle.visible = false;
       this.scene.add(this.reticle);
       session.addEventListener('select', () => {
-        if (this.reticle.visible) {
-          this.anchor.position.setFromMatrixPosition(this.reticle.matrix);
-          this.anchor.scale.setScalar(0.22);
-          this.anchor.visible = true;
-          this.motion.comeHere?.();
-        }
+        if (!this.reticle.visible) return;
+        this.anchor.position.setFromMatrixPosition(this.reticle.matrix);
+        // The anchor is left at unit scale and the creature scaled inside it,
+        // so the roaming controller works in real metres and a table really is
+        // 0.7m away rather than 0.7 of some arbitrary unit.
+        this.anchor.scale.setScalar(1);
+        this.setCreatureScale(0.22);
+        this.anchor.visible = true;
+        // Every surface is expressed relative to where the player placed it.
+        this.roomProvider?.setOrigin?.(this.anchor.matrixWorld);
+        this.roomProvider?.setFallbackFloor?.();
+        this.roomView?.group.position.copy(this.anchor.position);
+        this.motion.comeHere?.();
       });
       session.addEventListener(
         'end',
@@ -366,10 +521,12 @@ export class PetScene {
           this.hitSource = null;
           this.scene.remove(this.reticle);
           disposeCreature(this.reticle);
+          this.disableRoom();
           if (!this.destroyed) {
             this.anchor.visible = true;
             this.anchor.position.set(0, 0, 0);
             this.anchor.scale.setScalar(1);
+            this.setCreatureScale(1);
             this.base.visible = this.garden;
             this.resize();
             onEnd();
@@ -387,8 +544,11 @@ export class PetScene {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.disableRoom();
     this.xrSession?.end().catch(() => {});
     document.removeEventListener('visibilitychange', this.visibility);
+    this.renderer.domElement.removeEventListener('pointermove', this.trackPointer);
+    this.renderer.domElement.removeEventListener('pointerleave', this.releaseGaze);
     this.ro.disconnect();
     this.io.disconnect();
     this.renderer.setAnimationLoop(null);

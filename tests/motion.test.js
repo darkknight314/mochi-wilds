@@ -199,7 +199,7 @@ test('creatures spend most of their time facing the player without locking front
     }
     const share = (n) => (100 * n) / frames;
     assert.ok(
-      share(face) >= 45 && share(face) <= 60,
+      share(face) >= 45 && share(face) <= 75,
       `${species} faces the player ${share(face).toFixed(1)}% of the time`,
     );
     assert.ok(share(back) < 15, `${species} shows its back ${share(back).toFixed(1)}% of the time`);

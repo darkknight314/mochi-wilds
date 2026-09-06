@@ -1,0 +1,134 @@
+// The Three.js representation of a sensed room.
+//
+// A RoomModel is data; this turns it into the three things the scene needs:
+//
+//   - shadow catchers, so the creature casts a real shadow onto your real
+//     table instead of floating with a shadow that lands nowhere
+//   - occluders, so a real wall or table edge hides the creature when it goes
+//     behind one (invisible geometry that still writes depth)
+//   - lighting, so the key light matches the room's measured brightness,
+//     colour cast, and — where the sensor reports one — direction
+//
+// Meshes are rebuilt only when the room's geometry actually changes, because
+// plane polygons are re-reported constantly and rebuilding every frame would
+// churn buffers on a phone.
+
+import * as THREE from 'three';
+
+// How much the measured room brightness is allowed to move the scene lighting.
+// A pet that goes genuinely black in a dim room reads as broken rather than
+// atmospheric, so the range is deliberately gentle.
+export const LIGHT_RANGE = { min: 0.45, max: 1.35 };
+
+const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+
+/** A polygon in the XZ plane becomes a flat, horizontal Three.js geometry. */
+export function surfaceGeometry(surface) {
+  const shape = new THREE.Shape(surface.polygon.map((p) => new THREE.Vector2(p.x, p.z)));
+  const geometry = new THREE.ShapeGeometry(shape);
+  // ShapeGeometry builds on XY; lay it flat and lift it to the surface height.
+  geometry.rotateX(Math.PI / 2);
+  geometry.translate(0, surface.y, 0);
+  return geometry;
+}
+
+/** A signature that changes only when the geometry meaningfully changes. */
+export function geometrySignature(room) {
+  return room.surfaces
+    .map((s) => `${s.id}:${s.y.toFixed(2)}:${s.polygon.length}:${s.area.toFixed(3)}`)
+    .join('|');
+}
+
+export class RoomView {
+  constructor(scene, { key = null } = {}) {
+    this.scene = scene;
+    this.key = key;
+    this.signature = null;
+    this.group = new THREE.Group();
+    this.group.name = 'room';
+    scene.add(this.group);
+    this.shadowMaterial = new THREE.ShadowMaterial({ color: '#2a2233', opacity: 0.3 });
+    // Invisible to the eye, but present in the depth buffer: this is what makes
+    // the creature disappear behind a real object rather than floating over it.
+    this.occluderMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
+    this.occluderMaterial.depthWrite = true;
+    this.baseKeyIntensity = key?.intensity ?? 2.5;
+    this.baseKeyColor = key ? key.color.clone() : new THREE.Color('#fff1e5');
+  }
+  /** Rebuild catcher and occluder meshes for this room, if it has changed. */
+  sync(room) {
+    const signature = geometrySignature(room);
+    if (signature === this.signature) return false;
+    this.signature = signature;
+    this.clearMeshes();
+    for (const surface of room.surfaces) {
+      if (surface.polygon.length < 3) continue;
+      const geometry = surfaceGeometry(surface);
+      if (surface.walkable) {
+        const catcher = new THREE.Mesh(geometry, this.shadowMaterial);
+        catcher.receiveShadow = true;
+        // Shadow catchers must not also occlude: a floor drawn into the depth
+        // buffer at the creature's own feet would clip its legs away.
+        catcher.renderOrder = -1;
+        this.group.add(catcher);
+      } else {
+        // Walls and ceilings are what the creature can genuinely hide behind.
+        const occluder = new THREE.Mesh(geometry, this.occluderMaterial);
+        occluder.renderOrder = -2;
+        this.group.add(occluder);
+      }
+    }
+    return true;
+  }
+  /**
+   * Match the scene's key light to the measured room. Intensity is clamped so
+   * a dim room dims the creature without losing it, and the colour cast is
+   * applied at half strength so a warm lamp warms the pastel palette rather
+   * than staining it.
+   */
+  applyLight(light) {
+    if (!this.key || !light) return;
+    const measured = clamp(light.intensity ?? 1, LIGHT_RANGE.min, LIGHT_RANGE.max);
+    this.key.intensity = this.baseKeyIntensity * measured;
+    const cast = light.color || { r: 1, g: 1, b: 1 };
+    const tint = new THREE.Color(
+      clamp(cast.r ?? 1, 0.5, 1.6),
+      clamp(cast.g ?? 1, 0.5, 1.6),
+      clamp(cast.b ?? 1, 0.5, 1.6),
+    );
+    this.key.color.copy(this.baseKeyColor).lerp(this.baseKeyColor.clone().multiply(tint), 0.5);
+    if (light.direction) {
+      // The sensor reports the direction light travels; the light sits opposite.
+      const d = light.direction;
+      const length = Math.hypot(d.x, d.y, d.z) || 1;
+      this.key.position.set(
+        (-d.x / length) * 5,
+        Math.abs(d.y / length) * 5 + 1,
+        (-d.z / length) * 5,
+      );
+    }
+  }
+  update(room) {
+    this.sync(room);
+    this.applyLight(room.light);
+  }
+  setVisible(visible) {
+    this.group.visible = visible;
+  }
+  clearMeshes() {
+    for (const child of [...this.group.children]) {
+      child.geometry?.dispose();
+      this.group.remove(child);
+    }
+  }
+  dispose() {
+    this.clearMeshes();
+    this.scene.remove(this.group);
+    this.shadowMaterial.dispose();
+    this.occluderMaterial.dispose();
+    if (this.key) {
+      this.key.intensity = this.baseKeyIntensity;
+      this.key.color.copy(this.baseKeyColor);
+    }
+  }
+}

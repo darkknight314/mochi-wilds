@@ -11,7 +11,15 @@ export default defineConfig({
     headless: true,
     channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome',
     launchOptions: {
-      args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+      args: [
+        '--use-gl=angle',
+        '--use-angle=swiftshader',
+        '--enable-unsafe-swiftshader',
+        // A synthetic webcam, so the camera tier of AR can be driven for real
+        // instead of being the one path nothing exercises.
+        '--use-fake-ui-for-media-stream',
+        '--use-fake-device-for-media-stream',
+      ],
     },
   },
   webServer: { command: 'npm run dev', url: 'http://127.0.0.1:5173', reuseExistingServer: true },

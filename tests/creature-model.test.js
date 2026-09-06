@@ -203,7 +203,7 @@ test('eyes are large, close-set, glossy and symmetrical on every species', () =>
 test('poseCreature stays finite for every species, action and phase', () => {
   for (const species of SPECIES) {
     const root = createCreature({ species, color: 'lilac' });
-    for (const action of ['inspect', 'walk', 'trick', 'cuddle'])
+    for (const action of ['inspect', 'walk', 'trick', 'cuddle', 'peekaboo'])
       for (let step = 0; step <= 12; step++) {
         const phase = step / 12,
           time = phase * 5.3;
@@ -243,6 +243,22 @@ test('signature animation clips are generated for every species without throwing
           `${species} ${clip.name} baked a non-finite value into ${track.name}`,
         );
     }
+  }
+});
+
+test('affection varies its lean, settles, and respects reduced motion', () => {
+  for (const species of SPECIES) {
+    const root = createCreature({ species, color: 'peach' });
+    poseCreature(root, 1.6, { action: 'cuddle', phase: 0.5, variant: 0 });
+    const left = root.rig.head.rotation.z;
+    poseCreature(root, 1.6, { action: 'cuddle', phase: 0.5, variant: 1 });
+    const right = root.rig.head.rotation.z;
+    assert.ok(left - right > 0.35, `${species} responds with different nuzzles`);
+    poseCreature(root, 1.6, { action: 'cuddle', phase: 0.5, reducedMotion: true });
+    assert.ok(Math.abs(root.rig.head.rotation.z) < Math.abs(left) * 0.3);
+    poseCreature(root, 3.2, { action: 'cuddle', phase: 1 });
+    assert.ok(Math.abs(root.rig.head.rotation.z) < 0.001, `${species} settles after affection`);
+    disposeCreature(root);
   }
 });
 

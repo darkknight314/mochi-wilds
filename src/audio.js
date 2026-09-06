@@ -136,7 +136,10 @@ export class SoundEngine {
       }
       const voice = this.context.createBufferSource();
       voice.buffer = buffer;
-      voice.playbackRate.value = Math.min(1.2, Math.max(0.8, pitch));
+      // Tiny delivery variations keep repeat affection from sounding like a
+      // replayed notification; musical and interface cues keep their tuning.
+      const variation = name.includes('-') ? 0.97 + Math.random() * 0.06 : 1;
+      voice.playbackRate.value = Math.min(1.2, Math.max(0.8, pitch * variation));
       voice.connect(this.master);
       this.voices.add(voice);
       voice.onended = () => {

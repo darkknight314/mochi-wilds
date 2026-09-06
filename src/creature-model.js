@@ -10,7 +10,7 @@ export function createCreature(pet) {
   const species = speciesOf(pet),
     root = new THREE.Group();
   root.name = `mochi_${species}`;
-  root.userData = { species, assetVersion: 3 };
+  root.userData = { species, assetVersion: 4 };
   const rig = {
     species,
     joints: [],
@@ -20,6 +20,7 @@ export function createCreature(pet) {
     tail: [],
     eyes: [],
     lids: [],
+    brows: [],
     antennae: [],
     fins: [],
     glows: [],
@@ -30,24 +31,16 @@ export function createCreature(pet) {
   const material = (color, extra = {}) =>
     new THREE.MeshPhysicalMaterial({ color, roughness: 0.68, metalness: 0, ...extra });
   const skin = material(baseColor, {
-    roughness: species === 'otter' ? 0.18 : 0.88,
-    clearcoat: species === 'otter' ? 1 : 0.035,
+    roughness: species === 'otter' ? 0.58 : 0.88,
+    clearcoat: species === 'otter' ? 0.18 : 0.035,
     clearcoatRoughness: 0.3,
     ...(species === 'otter'
       ? {
-          // Real refraction, not just alpha: the swirl inside has to be visible
-          // through the shell for the jelly read to land.
-          transparent: true,
-          opacity: 0.82,
-          transmission: 0.52,
-          thickness: 1.1,
-          ior: 1.34,
-          attenuationDistance: 1.1,
-          attenuationColor: new THREE.Color('#8fd0f2'),
-          depthWrite: false,
+          // Milky mochi: the silhouette and face stay readable in every light.
+          transmission: 0,
         }
       : {}),
-    sheen: species === 'otter' ? 0 : 1,
+    sheen: 1,
     sheenColor: baseColor.clone().lerp(new THREE.Color('#fff3ec'), 0.25),
     sheenRoughness: 0.75,
   });
@@ -88,7 +81,7 @@ export function createCreature(pet) {
     const m = new THREE.Mesh(sphere, mat);
     m.position.set(x, y, z);
     m.scale.set(sx, sy, sz);
-    m.castShadow = mat !== skin || species !== 'otter';
+    m.castShadow = true;
     m.receiveShadow = true;
     parent.add(m);
     return m;
@@ -211,13 +204,13 @@ export function createCreature(pet) {
       const lowerCheek = Math.exp(-((y + 0.3) ** 2) / 0.16);
       positions.setXYZ(
         i,
-        x * (1 + 0.075 * lowerCheek),
+        x * (1 + 0.17 * lowerCheek),
         y,
         z + Math.max(0, z) * 0.055 * Math.exp(-(x * x) / 0.13 - (y + 0.35) ** 2 / 0.13),
       );
       const muzzleMask = Math.exp(-(x * x) / 0.11 - (y + 0.42) ** 2 / 0.08) * Math.max(0, z);
       const cheekMask =
-        Math.exp(-((Math.abs(x) - 0.7) ** 2) / 0.035 - (y + 0.34) ** 2 / 0.024) * Math.max(0, z);
+        Math.exp(-((Math.abs(x) - 0.67) ** 2) / 0.065 - (y + 0.38) ** 2 / 0.055) * Math.max(0, z);
       const forehead = Math.exp(-(x * x) / 0.22 - (y - 0.53) ** 2 / 0.23) * Math.max(0, z);
       const c = coat.clone().lerp(new THREE.Color('#fff0dd'), muzzleMask * 0.65 + forehead * 0.12);
       c.lerp(new THREE.Color('#ef819e'), cheekMask * 0.93);
@@ -230,7 +223,7 @@ export function createCreature(pet) {
     skull.material.color.set('white');
     skull.material.vertexColors = true;
     const surfaceZ = (x, y) => sz * Math.sqrt(Math.max(0.05, 1 - (x / sx) ** 2 - (y / sy) ** 2));
-    eyeY = -0.025;
+    eyeY = -0.065;
     const eyeMaterial = material('white', {
       vertexColors: true,
       roughness: 0.14,
@@ -243,7 +236,7 @@ export function createCreature(pet) {
     const irisColor = new THREE.Color(iris).lerp(new THREE.Color('#976776'), 0.4);
     for (let i = 0; i < eyeGeometry.attributes.position.count; i++) {
       const y = eyeGeometry.attributes.position.getY(i);
-      const c = new THREE.Color('#251e30').lerp(irisColor, Math.max(0, -y) * 0.68);
+      const c = new THREE.Color('#392936').lerp(irisColor, Math.max(0, -y) * 0.9);
       eyeColors.push(c.r, c.g, c.b);
     }
     eyeGeometry.setAttribute('color', new THREE.Float32BufferAttribute(eyeColors, 3));
@@ -261,7 +254,7 @@ export function createCreature(pet) {
       eye.scale.setScalar(eyeSize);
       rig.eyes.push(eye);
       const bead = new THREE.Mesh(eyeGeometry, eyeMaterial);
-      bead.scale.set(0.16, 0.181, 0.055);
+      bead.scale.set(0.151, 0.163, 0.045);
       eye.add(bead);
       ell(eye, -0.041, 0.065, 0.049, 0.027, 0.035, 0.009, shine);
       ell(eye, 0.048, -0.037, 0.051, 0.011, 0.014, 0.006, shine);
@@ -282,25 +275,26 @@ export function createCreature(pet) {
         dark,
       );
       rig.lids.push(lid);
-      const brow = ell(
+      const browJoint = joint(
+        `brow_${sign < 0 ? 'l' : 'r'}`,
         head,
         sign * width,
-        eyeY + 0.23,
-        surfaceZ(width, eyeY + 0.23) + 0.008,
-        0.044,
-        0.012,
-        0.013,
-        brow2,
+        eyeY + 0.215,
+        surfaceZ(width, eyeY + 0.215) + 0.008,
       );
+      rig.brows.push(browJoint);
+      const brow = ell(browJoint, 0, 0, 0, 0.044, 0.012, 0.013, brow2);
       brow.rotation.z = sign * 0.12;
     }
     const mz = surfaceZ(0, eyeY - 0.16) + 0.026;
     muzzle = 0.018;
     const nose = ell(head, 0, eyeY - 0.155, mz, 0.034, 0.021, 0.024, dark);
     nose.rotation.z = 0.03;
-    // A tiny "w" smile rather than a gaping dark oval.
+    const smile = joint('little_smile', head);
+    rig.smile = smile;
+    // A tiny "w" smile with a separate open expression for little syllables.
     tube(
-      head,
+      smile,
       [
         [-0.044, eyeY - 0.195, mz - 0.006],
         [-0.024, eyeY - 0.214, mz - 0.006],
@@ -310,7 +304,7 @@ export function createCreature(pet) {
       dark,
     );
     tube(
-      head,
+      smile,
       [
         [0, eyeY - 0.199, mz],
         [0.024, eyeY - 0.214, mz - 0.006],
@@ -647,11 +641,11 @@ export function createCreature(pet) {
     torso = joint('torso', root, 0, 0.6, 0);
     ell(torso, 0, 0, 0, 0.42, 0.4, 0.4);
     ell(torso, 0, -0.06, 0.358, 0.24, 0.23, 0.045, pale);
-    head = joint('head', torso, 0, 0.58, 0.05);
+    head = joint('head', torso, 0, 0.48, 0.09);
     skull = ell(head, 0, 0, 0, 0.6, 0.52, 0.47);
     skull.name = 'skull';
     ell(head, 0, -0.17, 0.27, 0.36, 0.25, 0.26);
-    face(head, { width: 0.235, front: 0.4, eyeSize: 1.06, muzzle: 0.12, iris: '#3f8f8d' });
+    face(head, { width: 0.235, front: 0.4, eyeSize: 1.06, muzzle: 0.12, iris: '#9d7659' });
     for (const sign of [-1, 1]) {
       const ear = joint(`ear_${sign < 0 ? 'l' : 'r'}`, head, sign * 0.43, 0.11, -0.05);
       ear.rotation.z = -sign * 1.22;
@@ -699,7 +693,7 @@ export function createCreature(pet) {
     torso = joint('torso', root, 0, 0.56, 0);
     ell(torso, 0, 0, 0, 0.33, 0.37, 0.3, fluff);
     ell(torso, 0, -0.05, 0.278, 0.23, 0.23, 0.036, pale);
-    head = joint('head', torso, 0, 0.54, 0.045);
+    head = joint('head', torso, 0, 0.46, 0.075);
     skull = ell(head, 0, 0, 0, 0.56, 0.5, 0.42, fluff);
     skull.name = 'skull';
     ell(head, 0, -0.19, 0.28, 0.3, 0.2, 0.19, fluff);
@@ -776,23 +770,8 @@ export function createCreature(pet) {
     const tailRoot = joint('tail_base', torso, 0, -0.18, -0.24);
     segmentedTail(tailRoot, { length: 0.45, radius: 0.1, segments: 4, curl: 0.16 });
   } else if (species === 'otter') {
-    // Puddle Otter: a teardrop of jelly. No fur seams, no whiskers, no belly
-    // patch — just a glassy blob with swirls suspended inside it and a tail
-    // that pours away into a liquid curl.
-    const swirl = material('#f3a8c8', {
-      roughness: 0.2,
-      clearcoat: 0.7,
-      transparent: true,
-      opacity: 0.95,
-      depthWrite: false,
-    });
-    const swirl2 = material('#8fe4cd', {
-      roughness: 0.2,
-      clearcoat: 0.7,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-    });
+    // Puddle Otter: milky mochi with a cream belly and a liquid-curled tail.
+    // An opaque coat gives the face and tiny paws a clear, cuddly silhouette.
     torso = joint('torso', root, 0, 0.55, 0);
     // A single lathed teardrop. Two overlapping spheres each drew their own
     // outline through the glass and the body read as a pile of bubbles.
@@ -811,12 +790,13 @@ export function createCreature(pet) {
     hull.scale.z = 0.92;
     hull.receiveShadow = true;
     torso.add(hull);
-    head = joint('head', torso, 0, 0.56, 0.04);
+    head = joint('head', torso, 0, 0.44, 0.08);
     // Skull only: the extra muzzle bump added a second glass silhouette across
     // the face for no read.
-    skull = ell(head, 0, 0, 0, 0.5, 0.44, 0.42);
+    skull = ell(head, 0, 0, 0, 0.55, 0.45, 0.43);
     skull.name = 'skull';
-    face(head, { width: 0.2, front: 0.37, eyeSize: 1.02, iris: '#3f8ed0', muzzle: 0.11 });
+    face(head, { width: 0.22, front: 0.37, eyeSize: 1.02, iris: '#677e9b', muzzle: 0.11 });
+    ell(torso, 0, -0.09, 0.305, 0.235, 0.265, 0.045, pale);
     for (const sign of [-1, 1]) {
       const ear = joint(`ear_${sign < 0 ? 'l' : 'r'}`, head, sign * 0.36, 0.29, -0.03);
       rig.ears.push(ear);
@@ -835,15 +815,6 @@ export function createCreature(pet) {
       null,
       true,
     );
-    // Interior colour reads as soft clouds suspended in the jelly, not as
-    // organs or a candy-cane noodle.
-    for (const [mat, x, y, z, r] of [
-      [swirl, 0.03, -0.13, 0.01, 0.12],
-      [swirl2, -0.06, 0.03, -0.02, 0.1],
-      [swirl, -0.04, 0.15, 0.03, 0.075],
-      [swirl2, 0.07, -0.02, -0.05, 0.07],
-    ])
-      ell(torso, x, y, z, r, r * 0.72, r * 0.92, mat);
     for (let i = 0; i < 6; i++) {
       const bubble = ell(
         torso,
@@ -1038,7 +1009,16 @@ export function createCreature(pet) {
 export function poseCreature(
   root,
   time,
-  { moving = 0, action = 'inspect', phase = 0, reducedMotion = false } = {},
+  {
+    moving = 0,
+    action = 'inspect',
+    phase = 0,
+    reducedMotion = false,
+    variant = 0,
+    lookX = 0,
+    lookY = 0,
+    talking = 0,
+  } = {},
 ) {
   const r = root.rig;
   if (!r) return;
@@ -1047,21 +1027,53 @@ export function poseCreature(
     j.rotation.fromArray(j.userData.restRotation);
     j.scale.fromArray(j.userData.restScale);
   }
-  const quiet = reducedMotion ? 0.2 : 1,
+  const p = THREE.MathUtils.clamp(phase, 0, 1);
+  const ease = (a, b) => THREE.MathUtils.smoothstep(p, a, b);
+  const envelope = (a, b, c, d) => ease(a, b) * (1 - ease(c, d));
+  const affection = action === 'cuddle';
+  const peek = action === 'peekaboo';
+  // An interaction has a little story: anticipation, contact, delight, recovery.
+  const nuzzle = affection ? envelope(0, 0.2, 0.66, 1) : 0;
+  const delight = affection ? envelope(0.2, 0.38, 0.72, 0.96) : 0;
+  const hide = peek ? envelope(0, 0.18, 0.43, 0.55) : 0;
+  const reveal = peek ? envelope(0.46, 0.59, 0.78, 1) : 0;
+  const direction = variant % 2 ? -1 : 1;
+  const quiet = reducedMotion ? 0.15 : 1,
     walk = moving * quiet,
     cycle = time * (r.species === 'ferret' ? 12 : 10),
-    happy = action === 'cuddle' ? Math.sin(Math.PI * Math.min(1, phase)) : 0,
-    trick = action === 'trick' ? Math.sin(Math.PI * Math.min(1, phase)) : 0;
+    happy = delight + reveal * 0.8,
+    trick = action === 'trick' ? Math.sin(Math.PI * p) * quiet : 0;
   const breathing = Math.sin(time * 2) * 0.012 * quiet;
   r.torso.scale.y = 1 + breathing;
   r.torso.position.y += Math.abs(Math.sin(cycle)) * walk * 0.065;
   r.torso.rotation.z = Math.sin(cycle * 0.5) * walk * 0.055;
-  r.head.rotation.y = Math.sin(time * 1.25) * 0.1 * quiet;
-  r.head.rotation.z = Math.sin(time * 1.6) * 0.035 * quiet + happy * 0.17;
-  r.head.rotation.x = action === 'inspect' ? Math.sin(time * 0.9) * 0.06 * quiet : 0;
+  const idle = action === 'inspect' ? 1 - moving : 0;
+  const idlePhase =
+    (time + ['dragon', 'mothkit', 'otter', 'imp', 'ferret'].indexOf(r.species) * 1.7) % 13;
+  const curious = Math.exp(-((idlePhase - 3.5) ** 2) / 0.8) * idle;
+  const sleepy = Math.exp(-((idlePhase - 10) ** 2) / 1.5) * idle;
+  const tilt = (nuzzle * direction * 0.22 + curious * 0.19) * quiet;
+  r.head.rotation.y += (Math.sin(time * 0.8) * 0.035 + lookX * 0.28) * quiet;
+  r.head.rotation.z += tilt + Math.sin(p * TAU * 2) * delight * 0.045 * quiet;
+  r.head.rotation.x += (sleepy * 0.12 - nuzzle * 0.16 + hide * 0.16 - lookY * 0.14) * quiet;
+  r.head.position.z += nuzzle * 0.1 * quiet;
+  r.head.position.y -= (hide * 0.065 + nuzzle * 0.025) * quiet;
+  r.torso.rotation.z += nuzzle * direction * 0.055 * quiet;
+  // Volume-preserving squeeze, followed by a small elastic release.
+  const squeeze = (nuzzle * 0.045 + hide * 0.085 - reveal * 0.04) * quiet;
+  r.torso.scale.x *= 1 + squeeze;
+  r.torso.scale.y *= 1 - squeeze;
+  r.torso.scale.z *= 1 + squeeze * 0.45;
   if (r.mouth) {
-    r.mouth.scale.y = 0.22 + happy * 0.9 + trick * 0.3;
-    r.mouth.rotation.z = Math.sin(time * 1.7) * 0.035;
+    const open = Math.max(
+      talking,
+      reveal * 0.85,
+      delight * (variant % 3 === 2 ? 0.4 : 0.9),
+      trick * 0.3,
+    );
+    r.mouth.scale.set(0.65 + open * 0.65, 0.03 + open * 1.25, 1);
+    r.smile.scale.setScalar(1 - open * 0.88);
+    r.mouth.rotation.z = direction * delight * 0.1;
   }
   r.legs.forEach((leg, i) => {
     const offset = i === 0 || i === 3 ? 0 : Math.PI;
@@ -1069,16 +1081,36 @@ export function poseCreature(
     leg.position.y += Math.max(0, Math.cos(cycle + offset)) * walk * 0.055;
   });
   r.ears.forEach((ear, i) => {
-    ear.rotation.z += Math.sin(time * 2.3 + i) * 0.055 * quiet;
-    ear.rotation.x += Math.sin(cycle) * walk * 0.07 + happy * 0.14;
+    const side = i ? 1 : -1;
+    ear.rotation.z +=
+      (Math.sin(time * 2.3 + i) * 0.025 +
+        side * nuzzle * 0.13 +
+        Math.sin(p * 22 - i * 0.8) * reveal * 0.17) *
+      quiet;
+    ear.rotation.x +=
+      Math.sin(cycle - 0.6) * walk * 0.1 +
+      (happy * 0.17 + hide * 0.25 + curious * (i ? 0.18 : -0.15)) * quiet;
   });
   r.antennae.forEach((a, i) => (a.rotation.z += Math.sin(time * 2 + i) * 0.075 * quiet));
-  const blink = time % 4.7 > 4.51 ? Math.max(0.08, Math.abs(((time % 4.7) - 4.6) / 0.09)) : 1;
-  const smile = THREE.MathUtils.smoothstep(happy, 0.45, 0.8);
-  r.eyes.forEach((eye) => {
+  const blinkTime = time % 6.1;
+  const blink =
+    1 -
+    0.94 *
+      Math.max(
+        Math.exp(-(((blinkTime - 4.6) / 0.075) ** 2)),
+        Math.exp(-(((blinkTime - 4.9) / 0.065) ** 2)),
+      );
+  const smile = Math.max(THREE.MathUtils.smoothstep(happy, 0.45, 0.8), hide * 0.9);
+  r.eyes.forEach((eye, i) => {
     eye.scale.multiplyScalar(1 - smile * 0.99);
-    eye.scale.y *= Math.min(1, blink);
+    eye.scale.y *= Math.min(1, blink) * (1 - sleepy * 0.45);
+    eye.position.x += lookX * 0.009;
+    eye.position.y += lookY * 0.008 + curious * 0.008;
     eye.position.z -= smile * 0.08;
+  });
+  r.brows.forEach((brow, i) => {
+    brow.position.y += curious * (i ? 0.025 : 0.01) + reveal * 0.022;
+    brow.rotation.z += (i ? -1 : 1) * nuzzle * 0.22;
   });
   r.lids.forEach((lid) => {
     lid.scale.setScalar(0.001 + smile * 0.999);
@@ -1089,7 +1121,7 @@ export function poseCreature(
     tail.rotation.y += 0.045 + wave + Math.sin(cycle * 0.55 - i * 0.4) * walk * 0.055;
     tail.rotation.x += r.species === 'imp' ? 0.22 : r.species === 'ferret' ? -0.035 : 0.025;
     if (r.species === 'otter') tail.rotation.x += Math.sin(time * 3.2 - i * 0.5) * 0.08 * quiet;
-    tail.rotation.y += happy * Math.sin(time * 13 - i * 0.3) * 0.07;
+    tail.rotation.y += happy * Math.sin(p * 32 - i * 0.55) * 0.12 * quiet;
   });
   r.wings.forEach((wing) => {
     // Additive so each species keeps the swept rest pose it was modelled with.
@@ -1109,18 +1141,18 @@ export function poseCreature(
     });
     r.torso.position.y += trick * (0.26 + Math.abs(Math.sin(time * 9)) * 0.13);
     r.legs.forEach((leg, i) => {
-      if (i > 1) leg.rotation.z += (i === 2 ? 1 : -1) * (happy * 0.7 + trick * 0.4);
+      if (i > 1) leg.rotation.z += (i === 2 ? 1 : -1) * (happy * 0.7 * quiet + trick * 0.4);
     });
   } else if (r.species === 'mothkit') {
     r.wings.forEach((w) => {
-      w.rotation.y += w.userData.side * (Math.sin(time * 17) * trick * 0.6 - happy * 0.38);
+      w.rotation.y += w.userData.side * (Math.sin(time * 17) * trick * 0.6 - happy * 0.38 * quiet);
       w.rotation.z -= w.userData.side * trick * 0.23;
     });
     r.torso.position.y += trick * 0.28;
     r.head.rotation.z += trick * 0.1;
   } else if (r.species === 'otter') {
     const slide = trick;
-    r.torso.scale.set(1 + slide * 0.18, 1 - slide * 0.24, 1 + slide * 0.15);
+    r.torso.scale.multiply(new THREE.Vector3(1 + slide * 0.18, 1 - slide * 0.24, 1 + slide * 0.15));
     r.torso.rotation.x = -slide * 0.65;
     r.torso.position.y -= slide * 0.1;
     r.head.rotation.x += slide * 0.38;
@@ -1141,7 +1173,25 @@ export function poseCreature(
     r.torso.rotation.y += trick * 1.05;
     r.head.rotation.y -= trick * 0.65;
   }
-  r.torso.position.y += happy * Math.abs(Math.sin(time * 7)) * 0.075 * quiet;
+  // Bring the actual front paws up to the cheeks. Local targets are computed
+  // from the head, so short and upright species can all play peekaboo.
+  const frontPaws = r.species === 'dragon' || r.species === 'mothkit' ? [2, 3] : [0, 1];
+  frontPaws.forEach((index, i) => {
+    const leg = r.legs[index],
+      side = i ? 1 : -1;
+    const hug = Math.max(hide, nuzzle * 0.38) * quiet;
+    leg.position.lerp(
+      new THREE.Vector3(
+        r.head.position.x + side * 0.19,
+        r.head.position.y + 0.07,
+        r.head.position.z + 0.49,
+      ),
+      hug,
+    );
+    leg.rotation.z += side * (-hide * 0.24 + reveal * 0.9) * quiet;
+    leg.position.y += reveal * 0.16 * quiet;
+  });
+  r.torso.position.y += reveal * 0.09 * quiet;
 }
 
 export function creatureClips(root) {

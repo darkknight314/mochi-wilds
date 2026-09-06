@@ -24,6 +24,7 @@ test('all five real 3D creatures render and respond with their own voices', asyn
       .toBe('trick');
     const loaded = await page.evaluate(async (id) => {
       const { audio } = await import('/src/audio.js');
+      await audio.unlock();
       return !!(await audio.buffer(`${id}-happy`));
     }, id);
     expect(loaded).toBe(true);
@@ -63,4 +64,45 @@ test('mobile creature close-ups fit and rotation exposes real geometry', async (
   await page.getByRole('slider', { name: 'Rotate Pocket Dragon' }).fill('80');
   const rotation = await page.evaluate(() => window.creatureStudio.views.get('dragon').turn);
   expect(rotation).toBeCloseTo((80 * Math.PI) / 180);
+});
+
+test('peekaboo hides then reveals the face and returns to idle', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/creatures.html');
+  await expect(page.locator('.model-view canvas')).toHaveCount(5);
+  await page.locator('[data-pet="dragon"][data-action="peekaboo"]').click();
+  await expect
+    .poll(() => page.evaluate(() => window.creatureStudio.views.get('dragon').motion.state))
+    .toBe('peekaboo');
+  // Capture specific beats of the real shared animation for visual review.
+  for (const [label, phase] of [
+    ['hide', 0.3],
+    ['reveal', 0.65],
+    ['settled', 1],
+  ]) {
+    const state = await page.evaluate(
+      async ({ phase }) => {
+        const { poseCreature } = await import('/src/creature-model.js');
+        for (const view of window.creatureStudio.views.values()) view.paused = true;
+        const view = window.creatureStudio.views.get('dragon');
+        poseCreature(view.pet, phase * 3.4, { action: 'peekaboo', phase });
+        view.pet.rotation.y = 0;
+        view.renderer.render(view.scene, view.camera);
+        return { paw: view.pet.rig.legs[2].position.y, head: view.pet.rig.head.position.y };
+      },
+      { phase },
+    );
+    if (label === 'hide') expect(state.paw).toBeGreaterThan(state.head - 0.08);
+    if (label === 'settled') expect(state.paw).toBeLessThan(state.head - 0.3);
+    await page
+      .locator('.creature-card.dragon')
+      .screenshot({ path: `test-results/peekaboo-${label}.png` });
+  }
+  await page.evaluate(() => {
+    const view = window.creatureStudio.views.get('dragon');
+    for (let i = 0; i < 16; i++) view.motion.update(0.25);
+  });
+  expect(await page.evaluate(() => window.creatureStudio.views.get('dragon').motion.state)).toBe(
+    'inspect',
+  );
 });
