@@ -753,6 +753,13 @@ async function launchAR(preview = false) {
               $('#ar-hint').textContent =
                 'This browser will not share surfaces, so your spirit will play near where you place it.';
           },
+          // Real depth occlusion is worth telling the player about, because it
+          // is the one effect they can test themselves in a second.
+          onOcclusion: (active) => {
+            if (active)
+              $('#ar-hint').textContent =
+                'Real objects hide your spirit now — pass your hand in front of it.';
+          },
         },
       );
       $('#ar-status').textContent = 'Spatial AR · scan a surface';

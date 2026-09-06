@@ -17,6 +17,19 @@ export const OPTIONAL_FEATURES = [
   'anchors',
 ];
 
+// `depth-sensing` is inert unless the session is created with this dictionary,
+// which is why asking for the feature alone did nothing. With it, and in
+// gpu-optimized mode, three.js draws the real world's depth into the depth
+// buffer before the scene, so anything nearer than the creature — furniture,
+// or a hand passed in front of the lens — hides it per pixel.
+//
+// The preference order matters: gpu-optimized is the mode three.js can use,
+// and luminance-alpha is the format Android exposes for it.
+export const DEPTH_SENSING_INIT = {
+  usagePreference: ['gpu-optimized', 'cpu-optimized'],
+  dataFormatPreference: ['luminance-alpha', 'float32'],
+};
+
 // Real plane extents drift by a few centimetres between frames. Re-reading
 // every polygon each frame makes the creature's world jitter, so a plane's
 // geometry is only re-read when the runtime bumps its `lastChangedTime`.

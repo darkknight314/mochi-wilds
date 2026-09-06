@@ -6,7 +6,7 @@ import { WanderController, MAX_DELTA, ELLIPSE_BOUNDS } from './motion.js';
 import { RoomBounds } from './room-bounds.js';
 import { RoomView } from './room-view.js';
 import { UNKNOWN_ROOM } from './room-model.js';
-import { XRRoomProvider, OPTIONAL_FEATURES } from './room-providers/xr-room.js';
+import { XRRoomProvider, OPTIONAL_FEATURES, DEPTH_SENSING_INIT } from './room-providers/xr-room.js';
 import { CameraRoomProvider } from './room-providers/camera-room.js';
 import { audio } from './audio.js';
 export { createCreature as createPet } from './creature-model.js';
@@ -97,6 +97,8 @@ export class PetScene {
     // shrunk instead, so the roaming controller can work in real metres.
     this.creatureScale = 1;
     this.roomVideo = null;
+    this.occlusionActive = false;
+    this.onOcclusion = () => {};
     this.roomView = null;
     this.room = UNKNOWN_ROOM;
     this.onRoom = () => {};
@@ -278,6 +280,14 @@ export class PetScene {
     this.lastFrame = t;
     if (document.hidden || this.paused || (!this.inView && !this.renderer.xr.isPresenting)) return;
     if (this.roomProvider) {
+      // Depth occlusion only truly begins once depth frames arrive, several
+      // frames after the feature is granted, so it is reported from the render
+      // loop rather than from session setup.
+      const occluding = !!this.renderer.xr.hasDepthSensing?.();
+      if (occluding !== this.occlusionActive) {
+        this.occlusionActive = occluding;
+        this.onOcclusion?.(occluding);
+      }
       if (frame) {
         this.applyRoom(this.roomProvider.update(frame, this.renderer.xr.getReferenceSpace()));
       } else if (this.roomVideo) {
@@ -458,6 +468,8 @@ export class PetScene {
     this.roomView = null;
     this.roomBounds = null;
     this.roomVideo = null;
+    this.occlusionActive = false;
+    this.onOcclusion = () => {};
     this.room = UNKNOWN_ROOM;
     if (this.roamBeforeRoom !== undefined) this.motion.roam = this.roamBeforeRoom;
     this.roamBeforeRoom = undefined;
@@ -473,13 +485,14 @@ export class PetScene {
     this.roomVideo = video;
     return provider;
   }
-  async startXR(onEnd, { onRoom = () => {}, onFeatures = () => {} } = {}) {
+  async startXR(onEnd, { onRoom = () => {}, onFeatures = () => {}, onOcclusion = () => {} } = {}) {
     const session = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test'],
       // Everything that makes the room real is optional: a browser that
       // refuses any of it still gets a working session, just a simpler room.
       optionalFeatures: ['dom-overlay', ...OPTIONAL_FEATURES],
       domOverlay: { root: document.getElementById('ar-overlay') },
+      depthSensing: DEPTH_SENSING_INIT,
     });
     this.xrSession = session;
     try {
@@ -491,6 +504,7 @@ export class PetScene {
       this.hitSource = await session.requestHitTestSource({ space: viewer });
       const provider = new XRRoomProvider();
       this.enableRoom(provider, { onRoom });
+      this.onOcclusion = onOcclusion;
       await provider.requestLightProbe(session);
       const enabled = session.enabledFeatures;
       onFeatures({
@@ -498,6 +512,7 @@ export class PetScene {
         // planes are really coming when the first frame reports some.
         planes: enabled ? enabled.includes('plane-detection') : null,
         light: !!provider.lightProbe,
+        depth: enabled ? enabled.includes('depth-sensing') : null,
       });
       this.reticle = new THREE.Mesh(
         new THREE.RingGeometry(0.12, 0.15, 40).rotateX(-Math.PI / 2),
