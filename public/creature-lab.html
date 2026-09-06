@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Mochi Wilds · Creature lab</title>
+    <link rel="icon" href="/assets/icon.svg" />
+    <link rel="stylesheet" href="/creature-lab.css" />
+  </head>
+  <body>
+    <canvas id="stage-canvas" aria-hidden="true"></canvas>
+    <main>
+      <header><a href="/">← Back to the garden</a><span>MOCHI WILDS / CREATURE LAB</span></header>
+      <div class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">FIVE LITTLE PERSONALITIES. ONE BIG WORLD.</p>
+          <h1>The whole little wild, <em>alive.</em></h1>
+          <p class="intro">
+            Every creature below is the real, articulated 3D model from the game — breathing,
+            blinking and running its own signature move. Drag any of them to look around, and hold
+            them up against the approved concept art.
+          </p>
+        </div>
+        <figure>
+          <a href="/assets/concepts/creature-lineup.png" target="_blank" rel="noopener"
+            ><img
+              src="/assets/concepts/creature-lineup.png"
+              alt="Approved concept art, left to right: Pocket Dragon, Mothkit, Puddle Otter, Bloom Imp, and Comet Ferret."
+          /></a>
+          <figcaption>Approved concept art · tap to open the full-size reference</figcaption>
+        </figure>
+      </div>
+
+      <section class="deck" aria-label="Gallery controls">
+        <div class="deck-lead">
+          <b>Everyone is animating at once.</b>
+          <p>One shared WebGL canvas drives all five viewports, so this stays smooth on a phone.</p>
+        </div>
+        <div class="deck-group">
+          <button id="playpause" type="button" aria-pressed="false">❚❚ Pause all</button>
+          <label class="slider"
+            >Speed
+            <input id="speed" type="range" min="25" max="200" step="5" value="100" />
+            <output id="speed-value">1.0×</output>
+          </label>
+        </div>
+        <div class="deck-group" role="group" aria-label="Play a state on every creature">
+          <span class="deck-label">Everyone</span>
+          <button data-all="idle" type="button">Idle</button
+          ><button data-all="walk" type="button">Scamper</button
+          ><button data-all="trick" type="button">Signature</button
+          ><button data-all="cuddle" type="button">Affection</button
+          ><button data-all="reset" type="button">Reset views</button>
+        </div>
+        <div class="deck-group toggles">
+          <label class="switch"><input id="sound" type="checkbox" /> Cue sounds</label>
+          <label class="switch"><input id="motion" type="checkbox" /> Full motion</label>
+        </div>
+      </section>
+
+      <section class="gallery" id="gallery" aria-label="Live creature models"></section>
+
+      <p id="lab-status" role="status" aria-live="polite">Waking the little wild…</p>
+
+      <section class="voices" aria-label="Creature voice auditions">
+        <div class="voices-head">
+          <div>
+            <h2>And a tiny voice for everyone.</h2>
+            <p>
+              Original sound effects, made for this world. Tap any cue to audition it — the same
+              player the animation controls use, so nothing ever talks over anything else.
+            </p>
+          </div>
+          <label class="slider"
+            >Preview volume
+            <input id="volume" type="range" min="0" max="100" value="45" />
+            <output id="volume-value">45%</output>
+          </label>
+          <button id="stop" type="button">Stop sound</button>
+        </div>
+        <p id="audio-status" role="status" aria-live="polite">Ready when you are.</p>
+        <div class="roster" id="roster"></div>
+        <div class="foley">
+          <h3>A little magic in every interaction.</h3>
+          <p>These are wired into the garden's care, walking, spells, rewards and boutique.</p>
+          <div id="foley-buttons"></div>
+        </div>
+      </section>
+
+      <p class="approval-note">
+        These are the live in-game models, posed by the same animator the garden uses. Tap
+        <b>Signature</b> to see each creature's party trick, or drag a viewport to inspect the
+        silhouette from any angle.
+      </p>
+    </main>
+    <script type="module" src="/creature-lab.js"></script>
+  </body>
+</html>

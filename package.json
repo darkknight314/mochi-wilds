@@ -1,0 +1,35 @@
+{
+  "name": "mochi-wilds",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server/dev.js",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "playwright test",
+    "native:sync": "npm run build && cap sync",
+    "native:ios": "cap open ios",
+    "native:android": "cap open android",
+    "format": "prettier --write src server tests README.md",
+    "assets:sounds": "node scripts/generate-sounds.js",
+    "assets:models": "node scripts/export-creatures.js"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/geolocation": "^7.1.5",
+    "@fontsource/dm-sans": "^5.3.0",
+    "@fontsource/manrope": "^5.3.0",
+    "three": "^0.180.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/cli": "^7.4.3",
+    "@capacitor/ios": "^7.4.3",
+    "@playwright/test": "^1.55.0",
+    "prettier": "^3.9.6",
+    "vite": "^7.1.5"
+  }
+}

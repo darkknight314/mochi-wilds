@@ -1,0 +1,7 @@
+{
+  "appId": "studio.mochi.wilds",
+  "appName": "Mochi Wilds",
+  "webDir": "dist",
+  "ios": { "contentInset": "always" },
+  "android": { "allowMixedContent": false }
+}
