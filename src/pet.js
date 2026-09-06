@@ -521,6 +521,17 @@ export class PetScene {
       this.onMapped = onMapped;
       await provider.requestLightProbe(session);
       const enabled = session.enabledFeatures;
+      // `depthUsage` and `depthDataFormat` are not plain properties: the spec
+      // has them throw InvalidStateError when depth sensing was not enabled.
+      // Reading them unguarded threw inside this try, ended the session, and
+      // dropped the whole experience to camera mode.
+      const depthDetail = (key) => {
+        try {
+          return session[key] ?? null;
+        } catch {
+          return null;
+        }
+      };
       onFeatures({
         // `enabledFeatures` is itself optional; without it we find out whether
         // planes are really coming when the first frame reports some.
@@ -529,8 +540,10 @@ export class PetScene {
         depth: enabled ? enabled.includes('depth-sensing') : null,
         // Which depth mode was actually granted. This is the difference
         // between "no depth hardware" and "depth we have not consumed yet".
-        depthUsage: session.depthUsage ?? null,
-        depthFormat: session.depthDataFormat ?? null,
+        depthUsage: depthDetail('depthUsage'),
+        depthFormat: depthDetail('depthDataFormat'),
+        // The raw grant list, so a refusal can be read rather than inferred.
+        granted: enabled ? [...enabled] : null,
       });
       this.reticle = new THREE.Mesh(
         new THREE.RingGeometry(0.12, 0.15, 40).rotateX(-Math.PI / 2),

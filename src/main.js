@@ -740,6 +740,10 @@ function withCapabilities(text) {
     notes.push(`Depth is ${arCapabilities.depthUsage}, so nothing hides it yet.`);
   else if (arCapabilities.depth === false)
     notes.push('No depth here, so it draws over real objects.');
+  if (arCapabilities.granted)
+    // The raw list, because every inference from it has been wrong at least
+    // once and this is the one line that cannot be.
+    notes.push(`Granted: ${arCapabilities.granted.join(', ') || 'nothing'}.`);
   if (arCapabilities.planes === false)
     notes.push(
       mappedProgress > 0
